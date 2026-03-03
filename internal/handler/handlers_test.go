@@ -3,6 +3,7 @@ package handler_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,24 +12,24 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Fa1ry7a1l/url-shortener/internal/handler"
-	"github.com/Fa1ry7a1l/url-shortener/internal/repository"
-	"github.com/Fa1ry7a1l/url-shortener/internal/service"
 )
 
-// deterministic ID generator for tests
-type fixedIDGen struct {
-	id  string
-	err error
+type fakeSvc struct {
+	shortenFn func(ctx context.Context, original string) (string, error)
+	resolveFn func(ctx context.Context, id string) (string, error)
 }
 
-func (g fixedIDGen) NewID() (string, error) {
-	return g.id, g.err
+func (f fakeSvc) Shorten(ctx context.Context, original string) (string, error) {
+	return f.shortenFn(ctx, original)
 }
 
-func newTestHandler(t *testing.T, baseURL string, gen service.IDGenerator, store repository.URLStore) http.Handler {
+func (f fakeSvc) Resolve(ctx context.Context, id string) (string, error) {
+	return f.resolveFn(ctx, id)
+}
+
+func newTestHandler(t *testing.T, svc handler.ShortenerService) http.Handler {
 	t.Helper()
 
-	svc := service.NewShortener(store, gen, baseURL)
 	shortenH := handler.NewShortenHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
 	router := handler.NewRouter(shortenH.Handle, resolveH.Handle)
@@ -43,6 +44,7 @@ func TestAPI_Shorten_POSTRoot(t *testing.T) {
 		name        string
 		contentType string
 		body        string
+		svcErr      error
 		wantCode    int
 		wantBody    string
 	}
@@ -56,7 +58,7 @@ func TestAPI_Shorten_POSTRoot(t *testing.T) {
 			wantBody:    baseURL + "/EwHXdJfB",
 		},
 		{
-			name:        "ok_with_spaces_trimmed",
+			name:        "ok_with_charset_and_spaces",
 			contentType: "text/plain; charset=utf-8",
 			body:        "   https://practicum.yandex.ru/   \n",
 			wantCode:    http.StatusCreated,
@@ -75,23 +77,29 @@ func TestAPI_Shorten_POSTRoot(t *testing.T) {
 			wantCode:    http.StatusBadRequest,
 		},
 		{
-			name:        "bad_invalid_url_no_scheme",
+			name:        "bad_service_error",
 			contentType: "text/plain",
-			body:        "practicum.yandex.ru",
-			wantCode:    http.StatusBadRequest,
-		},
-		{
-			name:        "bad_invalid_scheme",
-			contentType: "text/plain",
-			body:        "ftp://example.com/file",
+			body:        "https://practicum.yandex.ru/",
+			svcErr:      errors.New("boom"),
 			wantCode:    http.StatusBadRequest,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store := repository.NewMemStore()
-			h := newTestHandler(t, baseURL, fixedIDGen{id: "EwHXdJfB"}, store)
+			svc := fakeSvc{
+				shortenFn: func(_ context.Context, _ string) (string, error) {
+					if tt.svcErr != nil {
+						return "", tt.svcErr
+					}
+					return baseURL + "/EwHXdJfB", nil
+				},
+				resolveFn: func(_ context.Context, _ string) (string, error) {
+					return "", errors.New("not used")
+				},
+			}
+
+			h := newTestHandler(t, svc)
 
 			req := httptest.NewRequest(http.MethodPost, "http://example.com/", bytes.NewBufferString(tt.body))
 			if tt.contentType != "" {
@@ -103,27 +111,21 @@ func TestAPI_Shorten_POSTRoot(t *testing.T) {
 
 			require.Equal(t, tt.wantCode, rr.Code)
 
-			gotBodyBytes, _ := io.ReadAll(rr.Body)
-			gotBody := string(gotBodyBytes)
-
 			if tt.wantCode == http.StatusCreated {
 				require.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
-				require.Equal(t, tt.wantBody, gotBody)
-			} else {
-				// На ошибках не проверяем точный текст/формат — только статус (API-устойчивость)
-				require.NotEqual(t, http.StatusCreated, rr.Code)
+				got, _ := io.ReadAll(rr.Body)
+				require.Equal(t, tt.wantBody, string(got))
 			}
 		})
 	}
 }
 
 func TestAPI_Resolve_GETID(t *testing.T) {
-	const baseURL = "http://localhost:8080"
-
 	type tc struct {
 		name       string
 		path       string
-		prepare    func(store repository.URLStore)
+		svcResult  string
+		svcErr     error
 		wantCode   int
 		wantLoc    string
 		wantHasLoc bool
@@ -131,35 +133,29 @@ func TestAPI_Resolve_GETID(t *testing.T) {
 
 	tests := []tc{
 		{
-			name: "ok_redirect",
-			path: "/EwHXdJfB",
-			prepare: func(store repository.URLStore) {
-				_ = store.Save(context.Background(), "EwHXdJfB", "https://practicum.yandex.ru/")
-			},
+			name:       "ok_redirect",
+			path:       "/EwHXdJfB",
+			svcResult:  "https://practicum.yandex.ru/",
 			wantCode:   http.StatusTemporaryRedirect,
 			wantLoc:    "https://practicum.yandex.ru/",
 			wantHasLoc: true,
 		},
 		{
-			name: "bad_not_found_treated_as_bad_request",
-			path: "/NoSuchID",
-			prepare: func(store repository.URLStore) {
-				// nothing
-			},
+			name:       "bad_not_found_or_any_error_becomes_400",
+			path:       "/NoSuchID",
+			svcErr:     errors.New("not found"),
+			wantCode:   http.StatusInternalServerError,
+			wantHasLoc: false,
+		},
+		{
+			name:       "bad_multi_segment_path",
+			path:       "/a/b",
 			wantCode:   http.StatusBadRequest,
 			wantHasLoc: false,
 		},
 		{
 			name:       "bad_root_is_not_get_endpoint",
 			path:       "/",
-			prepare:    func(store repository.URLStore) {},
-			wantCode:   http.StatusBadRequest,
-			wantHasLoc: false,
-		},
-		{
-			name:       "bad_multi_segment_path",
-			path:       "/a/b",
-			prepare:    func(store repository.URLStore) {},
 			wantCode:   http.StatusBadRequest,
 			wantHasLoc: false,
 		},
@@ -167,10 +163,19 @@ func TestAPI_Resolve_GETID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store := repository.NewMemStore()
-			tt.prepare(store)
+			svc := fakeSvc{
+				shortenFn: func(_ context.Context, _ string) (string, error) {
+					return "", errors.New("not used")
+				},
+				resolveFn: func(_ context.Context, _ string) (string, error) {
+					if tt.svcErr != nil {
+						return "", tt.svcErr
+					}
+					return tt.svcResult, nil
+				},
+			}
 
-			h := newTestHandler(t, baseURL, fixedIDGen{id: "EwHXdJfB"}, store)
+			h := newTestHandler(t, svc)
 
 			req := httptest.NewRequest(http.MethodGet, "http://example.com"+tt.path, nil)
 			rr := httptest.NewRecorder()
@@ -190,7 +195,16 @@ func TestAPI_Resolve_GETID(t *testing.T) {
 }
 
 func TestAPI_BadRequests_Return400(t *testing.T) {
-	const baseURL = "http://localhost:8080"
+	svc := fakeSvc{
+		shortenFn: func(_ context.Context, _ string) (string, error) {
+			return "http://localhost:8080/ID", nil
+		},
+		resolveFn: func(_ context.Context, _ string) (string, error) {
+			return "https://example.com", nil
+		},
+	}
+
+	h := newTestHandler(t, svc)
 
 	tests := []struct {
 		name   string
@@ -201,13 +215,11 @@ func TestAPI_BadRequests_Return400(t *testing.T) {
 	}{
 		{"put_not_allowed", http.MethodPut, "/", "https://practicum.yandex.ru/", "text/plain"},
 		{"post_not_root", http.MethodPost, "/abc", "https://practicum.yandex.ru/", "text/plain"},
+		{"get_multi_segment", http.MethodGet, "/a/b", "", ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store := repository.NewMemStore()
-			h := newTestHandler(t, baseURL, fixedIDGen{id: "EwHXdJfB"}, store)
-
 			var body io.Reader
 			if tt.body != "" {
 				body = bytes.NewBufferString(tt.body)

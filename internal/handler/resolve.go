@@ -4,17 +4,15 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/Fa1ry7a1l/url-shortener/internal/repository"
-	"github.com/Fa1ry7a1l/url-shortener/internal/service"
+	"github.com/go-chi/chi/v5"
 )
 
 type ResolveHandler struct {
-	svc *service.Shortener
+	svc ShortenerService
 }
 
-func NewResolveHandler(svc *service.Shortener) *ResolveHandler {
+func NewResolveHandler(svc ShortenerService) *ResolveHandler {
 	return &ResolveHandler{svc: svc}
 }
 
@@ -28,10 +26,10 @@ func (h *ResolveHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	original, err := h.svc.Resolve(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			http.Error(w, "bad request", http.StatusBadRequest)
+			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
-		http.Error(w, "bad request", http.StatusBadRequest)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 

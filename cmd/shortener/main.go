@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/Fa1ry7a1l/url-shortener/internal/config"
@@ -15,7 +16,11 @@ import (
 
 func main() {
 
-	cfg := config.New()
+	cfg, err := config.Parse(os.Args[1:])
+	if err != nil {
+		// при ошибке флагов лучше завершиться
+		panic(err)
+	}
 	store := repository.NewMemStore()
 	idgen := service.NewRandomID(cfg.IDLength)
 	svc := service.NewShortener(store, idgen, cfg.BaseURL)

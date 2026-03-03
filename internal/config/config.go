@@ -3,7 +3,6 @@ package config
 import (
 	"flag"
 	"strings"
-	"sync"
 )
 
 type Config struct {
@@ -18,29 +17,23 @@ const (
 	defaultIDLength = 8
 )
 
-var (
-	instance *Config
-	once     sync.Once
-)
+func Parse(args []string) (*Config, error) {
+	cfg := &Config{}
 
-func New() *Config {
-	once.Do(func() {
-		cfg := &Config{}
+	fs := flag.NewFlagSet("shortener", flag.ContinueOnError)
+	fs.StringVar(&cfg.Addr, "a", defaultAddr, "HTTP server address (e.g. localhost:8888)")
+	fs.StringVar(&cfg.BaseURL, "b", defaultBaseURL, "Base URL for short links (e.g. http://localhost:8000)")
+	fs.IntVar(&cfg.IDLength, "l", defaultIDLength, "Length of generated short ID")
 
-		flag.StringVar(&cfg.Addr, "a", defaultAddr, "HTTP server address (e.g. localhost:8888)")
-		flag.StringVar(&cfg.BaseURL, "b", defaultBaseURL, "Base URL for short links (e.g. http://localhost:8000)")
-		flag.IntVar(&cfg.IDLength, "l", defaultIDLength, "Length of generated short ID")
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
 
-		flag.Parse()
+	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
 
-		cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
+	if cfg.IDLength <= 0 {
+		cfg.IDLength = defaultIDLength
+	}
 
-		if cfg.IDLength <= 0 {
-			cfg.IDLength = defaultIDLength
-		}
-
-		instance = cfg
-	})
-
-	return instance
+	return cfg, nil
 }

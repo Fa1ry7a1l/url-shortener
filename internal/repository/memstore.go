@@ -7,6 +7,7 @@ import (
 )
 
 var ErrNotFound = errors.New("not found")
+var ErrIDExists = errors.New("id already exists")
 
 type URLStore interface {
 	Save(ctx context.Context, id string, original string) error
@@ -25,6 +26,9 @@ func NewMemStore() *MemStore {
 func (m *MemStore) Save(_ context.Context, id string, original string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if _, exists := m.data[id]; exists {
+		return ErrIDExists
+	}
 	m.data[id] = original
 	return nil
 }
