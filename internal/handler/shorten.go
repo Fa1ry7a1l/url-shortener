@@ -4,20 +4,17 @@ import (
 	"io"
 	"net/http"
 	"strings"
-
-	"github.com/Fa1ry7a1l/url-shortener/internal/service"
 )
 
 type ShortenHandler struct {
-	svc *service.Shortener
+	svc ShortenerService
 }
 
-func NewShortenHandler(svc *service.Shortener) *ShortenHandler {
+func NewShortenHandler(svc ShortenerService) *ShortenHandler {
 	return &ShortenHandler{svc: svc}
 }
 
 func (h *ShortenHandler) Handle(w http.ResponseWriter, r *http.Request) {
-	// Content-Type: text/plain (в реальности может прилетать с charset)
 	if ct := r.Header.Get("Content-Type"); ct != "" && !strings.HasPrefix(ct, "text/plain") {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return

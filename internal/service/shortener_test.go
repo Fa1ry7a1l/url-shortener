@@ -129,3 +129,33 @@ func TestShortener_Resolve_NotFound(t *testing.T) {
 	_, err := svc.Resolve(context.Background(), "missing")
 	require.ErrorIs(t, err, repository.ErrNotFound)
 }
+
+type seqGen struct {
+	ids []string
+	i   int
+}
+
+func (g *seqGen) NewID() (string, error) {
+	if g.i >= len(g.ids) {
+		return g.ids[len(g.ids)-1], nil
+	}
+	id := g.ids[g.i]
+	g.i++
+	return id, nil
+}
+
+func TestShortener_Shorten_RetriesOnCollision(t *testing.T) {
+	store := repository.NewMemStore()
+	require.NoError(t, store.Save(context.Background(), "dup", "https://already.com"))
+
+	gen := &seqGen{ids: []string{"dup", "uniq"}}
+	svc := service.NewShortener(store, gen, "http://localhost:8080")
+
+	short, err := svc.Shorten(context.Background(), "https://example.com")
+	require.NoError(t, err)
+	require.Equal(t, "http://localhost:8080/uniq", short)
+
+	got, err := store.Get(context.Background(), "uniq")
+	require.NoError(t, err)
+	require.Equal(t, "https://example.com", got)
+}
