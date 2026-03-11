@@ -3,7 +3,8 @@ package handler
 import (
 	"errors"
 	"net/http"
-	"strings"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/Fa1ry7a1l/url-shortener/internal/repository"
 	"github.com/Fa1ry7a1l/url-shortener/internal/service"
@@ -18,7 +19,7 @@ func NewResolveHandler(svc *service.Shortener) *ResolveHandler {
 }
 
 func (h *ResolveHandler) Handle(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/")
+	id := chi.URLParam(r, "id")
 	if id == "" {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
@@ -26,7 +27,6 @@ func (h *ResolveHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 	original, err := h.svc.Resolve(r.Context(), id)
 	if err != nil {
-		// по ТЗ "любой некорректный запрос" -> 400
 		if errors.Is(err, repository.ErrNotFound) {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
