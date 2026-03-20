@@ -1,6 +1,6 @@
 module github.com/Fa1ry7a1l/url-shortener
 
-go 1.25.0
+go 1.24.13
 
 require (
 	github.com/go-chi/chi/v5 v5.2.5
