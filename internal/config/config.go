@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"os"
 	"strings"
 )
 
@@ -28,7 +29,12 @@ func Parse(args []string) (*Config, error) {
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
-
+	if v := os.Getenv("SERVER_ADDRESS"); v != "" {
+		cfg.Addr = v
+	}
+	if v := os.Getenv("BASE_URL"); v != "" {
+		cfg.BaseURL = v
+	}
 	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
 
 	if cfg.IDLength <= 0 {
