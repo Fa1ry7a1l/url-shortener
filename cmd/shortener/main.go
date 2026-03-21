@@ -30,7 +30,10 @@ func main() {
 		_ = log.Sync()
 	}()
 
-	store := repository.NewMemStore()
+	store, err := repository.NewFileStore(cfg.FileStoragePath)
+	if err != nil {
+		panic(err)
+	}
 	idgen := service.NewRandomID(cfg.IDLength)
 	svc := service.NewShortener(store, idgen, cfg.BaseURL)
 
