@@ -4,19 +4,30 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
+	appLogger "github.com/Fa1ry7a1l/url-shortener/internal/logger"
 )
 
 type Router struct {
 	shorten http.HandlerFunc
 	resolve http.HandlerFunc
+	logger  appLogger.Logger
 }
 
-func NewRouter(shorten http.HandlerFunc, resolve http.HandlerFunc) *Router {
-	return &Router{shorten: shorten, resolve: resolve}
+func NewRouter(shorten http.HandlerFunc, resolve http.HandlerFunc, logger appLogger.Logger) *Router {
+	return &Router{
+		shorten: shorten,
+		resolve: resolve,
+		logger:  logger,
+	}
 }
 
 func (rt *Router) Handler() http.Handler {
 	r := chi.NewRouter()
+
+	if rt.logger != nil {
+		r.Use(appLogger.RequestLogger(rt.logger))
+	}
 
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
