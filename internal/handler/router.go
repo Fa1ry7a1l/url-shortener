@@ -9,16 +9,23 @@ import (
 )
 
 type Router struct {
-	shorten http.HandlerFunc
-	resolve http.HandlerFunc
-	logger  appLogger.Logger
+	shorten     http.HandlerFunc
+	shortenJSON http.HandlerFunc
+	resolve     http.HandlerFunc
+	logger      appLogger.Logger
 }
 
-func NewRouter(shorten http.HandlerFunc, resolve http.HandlerFunc, logger appLogger.Logger) *Router {
+func NewRouter(
+	shorten http.HandlerFunc,
+	shortenJSON http.HandlerFunc,
+	resolve http.HandlerFunc,
+	logger appLogger.Logger,
+) *Router {
 	return &Router{
-		shorten: shorten,
-		resolve: resolve,
-		logger:  logger,
+		shorten:     shorten,
+		shortenJSON: shortenJSON,
+		resolve:     resolve,
+		logger:      logger,
 	}
 }
 
@@ -37,6 +44,7 @@ func (rt *Router) Handler() http.Handler {
 	})
 
 	r.Post("/", rt.shorten)
+	r.Post("/api/shorten", rt.shortenJSON)
 	r.Get("/{id}", rt.resolve)
 
 	return r

@@ -35,9 +35,15 @@ func main() {
 	svc := service.NewShortener(store, idgen, cfg.BaseURL)
 
 	shortenH := handler.NewShortenHandler(svc)
+	shortenJSONH := handler.NewShortenJSONHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
-	router := handler.NewRouter(shortenH.Handle, resolveH.Handle, log)
 
+	router := handler.NewRouter(
+		shortenH.Handle,
+		shortenJSONH.Handle,
+		resolveH.Handle,
+		log,
+	)
 	srv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           router.Handler(),
