@@ -32,7 +32,7 @@ func newTestHandler(t *testing.T, svc handler.ShortenerService) http.Handler {
 
 	shortenH := handler.NewShortenHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
-	router := handler.NewRouter(shortenH.Handle, resolveH.Handle)
+	router := handler.NewRouter(shortenH.Handle, resolveH.Handle, nil)
 
 	return router.Handler()
 }
