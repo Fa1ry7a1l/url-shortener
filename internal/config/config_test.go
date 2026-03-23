@@ -70,3 +70,27 @@ func TestParse_InvalidFlag_ReturnsError(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, cfg)
 }
+
+func TestParse_FileStoragePath_Default(t *testing.T) {
+	t.Setenv("FILE_STORAGE_PATH", "")
+
+	cfg, err := config.Parse(nil)
+	require.NoError(t, err)
+	require.Equal(t, "shortener-db.json", cfg.FileStoragePath)
+}
+
+func TestParse_FileStoragePath_Flag(t *testing.T) {
+	t.Setenv("FILE_STORAGE_PATH", "")
+
+	cfg, err := config.Parse([]string{"-f", "/tmp/test.json"})
+	require.NoError(t, err)
+	require.Equal(t, "/tmp/test.json", cfg.FileStoragePath)
+}
+
+func TestParse_FileStoragePath_EnvOverridesFlag(t *testing.T) {
+	t.Setenv("FILE_STORAGE_PATH", "/env/test.json")
+
+	cfg, err := config.Parse([]string{"-f", "/flag/test.json"})
+	require.NoError(t, err)
+	require.Equal(t, "/env/test.json", cfg.FileStoragePath)
+}
