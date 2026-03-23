@@ -32,6 +32,8 @@ func NewRouter(
 func (rt *Router) Handler() http.Handler {
 	r := chi.NewRouter()
 
+	r.Use(GzipHandle)
+
 	if rt.logger != nil {
 		r.Use(appLogger.RequestLogger(rt.logger))
 	}
