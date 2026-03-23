@@ -31,8 +31,9 @@ func newTestHandler(t *testing.T, svc handler.ShortenerService) http.Handler {
 	t.Helper()
 
 	shortenH := handler.NewShortenHandler(svc)
+	shortenJSONH := handler.NewShortenJSONHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
-	router := handler.NewRouter(shortenH.Handle, resolveH.Handle, nil)
+	router := handler.NewRouter(shortenH.Handle, shortenJSONH.Handle, resolveH.Handle, nil)
 
 	return router.Handler()
 }
@@ -233,6 +234,91 @@ func TestAPI_BadRequests_Return400(t *testing.T) {
 			h.ServeHTTP(rr, req)
 
 			require.Equal(t, http.StatusBadRequest, rr.Code)
+		})
+	}
+}
+
+func TestAPI_ShortenJSON_POSTAPIShorten(t *testing.T) {
+	const baseURL = "http://localhost:8080"
+
+	type tc struct {
+		name        string
+		contentType string
+		body        string
+		svcErr      error
+		wantCode    int
+		wantBody    string
+	}
+
+	tests := []tc{
+		{
+			name:        "ok_json",
+			contentType: "application/json",
+			body:        `{"url":"https://practicum.yandex.ru"}`,
+			wantCode:    http.StatusCreated,
+			wantBody:    `{"result":"http://localhost:8080/EwHXdJfB"}` + "\n",
+		},
+		{
+			name:        "ok_json_with_spaces",
+			contentType: "application/json",
+			body:        "{\n  \"url\": \"https://practicum.yandex.ru\"\n}",
+			wantCode:    http.StatusCreated,
+			wantBody:    `{"result":"http://localhost:8080/EwHXdJfB"}` + "\n",
+		},
+		{
+			name:        "bad_invalid_json",
+			contentType: "application/json",
+			body:        `{"url":`,
+			wantCode:    http.StatusBadRequest,
+		},
+		{
+			name:        "bad_service_error",
+			contentType: "application/json",
+			body:        `{"url":"https://practicum.yandex.ru"}`,
+			svcErr:      errors.New("boom"),
+			wantCode:    http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := fakeSvc{
+				shortenFn: func(ctx context.Context, original string) (string, error) {
+					_ = ctx
+					if tt.svcErr != nil {
+						return "", tt.svcErr
+					}
+					require.Equal(t, "https://practicum.yandex.ru", original)
+					return baseURL + "/EwHXdJfB", nil
+				},
+				resolveFn: func(ctx context.Context, id string) (string, error) {
+					_ = ctx
+					_ = id
+					return "", errors.New("not used")
+				},
+			}
+
+			h := newTestHandler(t, svc)
+
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"http://example.com/api/shorten",
+				bytes.NewBufferString(tt.body),
+			)
+			if tt.contentType != "" {
+				req.Header.Set("Content-Type", tt.contentType)
+			}
+
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			require.Equal(t, tt.wantCode, rr.Code)
+
+			if tt.wantCode == http.StatusCreated {
+				require.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+				got, _ := io.ReadAll(rr.Body)
+				require.Equal(t, tt.wantBody, string(got))
+			}
 		})
 	}
 }
