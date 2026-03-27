@@ -19,6 +19,14 @@ type BatchResponseItem struct {
 	ShortURL      string
 }
 
+type ConflictError struct {
+	ShortURL string
+}
+
+func (e *ConflictError) Error() string {
+	return "original url already exists"
+}
+
 type Shortener struct {
 	store          repository.Store
 	idgen          IDGenerator
@@ -56,6 +64,17 @@ func (s *Shortener) Shorten(ctx context.Context, original string) (string, error
 		if errors.Is(err, repository.ErrIDExists) {
 			continue
 		}
+
+		if errors.Is(err, repository.ErrOriginalURLExist) {
+			existingID, getErr := s.store.GetByOriginal(ctx, original)
+			if getErr != nil {
+				return "", getErr
+			}
+			return "", &ConflictError{
+				ShortURL: s.baseURL + "/" + existingID,
+			}
+		}
+
 		return "", err
 	}
 

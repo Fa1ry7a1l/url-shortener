@@ -5,6 +5,7 @@ go 1.24.13
 require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/golang-migrate/migrate/v4 v4.19.1
+	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
 	github.com/lib/pq v1.12.0
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.1

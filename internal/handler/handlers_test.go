@@ -91,6 +91,14 @@ func TestAPI_Shorten_POSTRoot(t *testing.T) {
 			svcErr:      errors.New("boom"),
 			wantCode:    http.StatusBadRequest,
 		},
+		{
+			name:        "conflict_existing_url",
+			contentType: "text/plain",
+			body:        "https://practicum.yandex.ru/",
+			svcErr:      &service.ConflictError{ShortURL: "http://localhost:8080/existing"},
+			wantCode:    http.StatusConflict,
+			wantBody:    "http://localhost:8080/existing",
+		},
 	}
 
 	for _, tt := range tests {
@@ -284,6 +292,14 @@ func TestAPI_ShortenJSON_POSTAPIShorten(t *testing.T) {
 			body:        `{"url":"https://practicum.yandex.ru"}`,
 			svcErr:      errors.New("boom"),
 			wantCode:    http.StatusBadRequest,
+		},
+		{
+			name:        "conflict_existing_url",
+			contentType: "application/json",
+			body:        `{"url":"https://practicum.yandex.ru"}`,
+			svcErr:      &service.ConflictError{ShortURL: "http://localhost:8080/existing"},
+			wantCode:    http.StatusConflict,
+			wantBody:    `{"result":"http://localhost:8080/existing"}` + "\n",
 		},
 	}
 

@@ -11,6 +11,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	postgresMigrate "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/jackc/pgerrcode"
 	"github.com/lib/pq"
 )
 
@@ -73,8 +74,14 @@ VALUES ($1, $2)
 	_, err := p.db.ExecContext(ctx, query, id, original)
 	if err != nil {
 		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
-			return ErrIDExists
+		if errors.As(err, &pqErr) {
+			switch string(pqErr.Code) {
+			case pgerrcode.UniqueViolation:
+				if pqErr.Constraint == "short_urls_pkey" {
+					return ErrIDExists
+				}
+				return ErrOriginalURLExist
+			}
 		}
 		return err
 	}
@@ -151,4 +158,23 @@ func (p *PostgresStore) Ping(ctx context.Context) error {
 
 func (p *PostgresStore) Close() error {
 	return p.db.Close()
+}
+
+func (p *PostgresStore) GetByOriginal(ctx context.Context, original string) (string, error) {
+	const query = `
+SELECT id
+FROM short_urls
+WHERE original_url = $1
+`
+	var id string
+
+	err := p.db.QueryRowContext(ctx, query, original).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+
+	return id, nil
 }
