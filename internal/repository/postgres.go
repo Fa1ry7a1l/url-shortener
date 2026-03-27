@@ -31,25 +31,7 @@ func NewPostgresStore(dsn string) (*PostgresStore, error) {
 		return nil, err
 	}
 
-	store := &PostgresStore{db: db}
-
-	if err := store.init(ctx); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-
-	return store, nil
-}
-
-func (p *PostgresStore) init(ctx context.Context) error {
-	const query = `
-CREATE TABLE IF NOT EXISTS short_urls (
-    id TEXT PRIMARY KEY,
-    original_url TEXT NOT NULL
-);
-`
-	_, err := p.db.ExecContext(ctx, query)
-	return err
+	return &PostgresStore{db: db}, nil
 }
 
 func (p *PostgresStore) Save(ctx context.Context, id string, original string) error {
@@ -58,15 +40,7 @@ INSERT INTO short_urls (id, original_url)
 VALUES ($1, $2)
 `
 	_, err := p.db.ExecContext(ctx, query, id, original)
-	if err != nil {
-		// 23505 = unique_violation
-		var pqErr interface{ SQLState() string }
-		if errors.As(err, &pqErr) && pqErr.SQLState() == "23505" {
-			return ErrIDExists
-		}
-		return err
-	}
-	return nil
+	return err
 }
 
 func (p *PostgresStore) Get(ctx context.Context, id string) (string, error) {
