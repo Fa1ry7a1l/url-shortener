@@ -40,12 +40,14 @@ func main() {
 
 	shortenH := handler.NewShortenHandler(svc)
 	shortenJSONH := handler.NewShortenJSONHandler(svc)
+	shortenBatchH := handler.NewShortenBatchHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
 	pingH := handler.NewPingHandler(store)
 
 	router := handler.NewRouter(
 		shortenH.Handle,
 		shortenJSONH.Handle,
+		shortenBatchH.Handle,
 		resolveH.Handle,
 		pingH.Handle,
 		log,

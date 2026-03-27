@@ -18,11 +18,25 @@ type fixedIDGen struct {
 
 func (g fixedIDGen) NewID() (string, error) { return g.id, g.err }
 
-type errStore struct{ err error }
+type errStore struct {
+	err error
+}
 
-func (e errStore) Save(_ context.Context, _ string, _ string) error { return e.err }
-func (e errStore) Get(_ context.Context, _ string) (string, error)  { return "", e.err }
-func (e errStore) Ping(_ context.Context) error                     { return nil }
+func (e errStore) Save(ctx context.Context, id string, original string) error {
+	return e.err
+}
+
+func (e errStore) SaveBatch(ctx context.Context, items []repository.BatchItem) error {
+	return e.err
+}
+
+func (e errStore) Get(ctx context.Context, id string) (string, error) {
+	return "", e.err
+}
+
+func (e errStore) Ping(ctx context.Context) error {
+	return e.err
+}
 
 func TestShortener_Shorten_OK(t *testing.T) {
 	store := repository.NewMemStore()
