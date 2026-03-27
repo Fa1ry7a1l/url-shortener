@@ -94,3 +94,27 @@ func TestParse_FileStoragePath_EnvOverridesFlag(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "/env/test.json", cfg.FileStoragePath)
 }
+
+func TestParse_DatabaseDSN_Default(t *testing.T) {
+	t.Setenv("DATABASE_DSN", "")
+
+	cfg, err := config.Parse(nil)
+	require.NoError(t, err)
+	require.Equal(t, "", cfg.DatabaseDSN)
+}
+
+func TestParse_DatabaseDSN_Flag(t *testing.T) {
+	t.Setenv("DATABASE_DSN", "")
+
+	cfg, err := config.Parse([]string{"-d", "postgres://user:pass@localhost:5432/shortener?sslmode=disable"})
+	require.NoError(t, err)
+	require.Equal(t, "postgres://user:pass@localhost:5432/shortener?sslmode=disable", cfg.DatabaseDSN)
+}
+
+func TestParse_DatabaseDSN_EnvOverridesFlag(t *testing.T) {
+	t.Setenv("DATABASE_DSN", "postgres://env:env@localhost:5432/envdb?sslmode=disable")
+
+	cfg, err := config.Parse([]string{"-d", "postgres://flag:flag@localhost:5432/flagdb?sslmode=disable"})
+	require.NoError(t, err)
+	require.Equal(t, "postgres://env:env@localhost:5432/envdb?sslmode=disable", cfg.DatabaseDSN)
+}

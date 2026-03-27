@@ -22,6 +22,7 @@ type errStore struct{ err error }
 
 func (e errStore) Save(_ context.Context, _ string, _ string) error { return e.err }
 func (e errStore) Get(_ context.Context, _ string) (string, error)  { return "", e.err }
+func (e errStore) Ping(_ context.Context) error                     { return nil }
 
 func TestShortener_Shorten_OK(t *testing.T) {
 	store := repository.NewMemStore()

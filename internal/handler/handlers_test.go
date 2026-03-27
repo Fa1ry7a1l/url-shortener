@@ -33,7 +33,8 @@ func newTestHandler(t *testing.T, svc handler.ShortenerService) http.Handler {
 	shortenH := handler.NewShortenHandler(svc)
 	shortenJSONH := handler.NewShortenJSONHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
-	router := handler.NewRouter(shortenH.Handle, shortenJSONH.Handle, resolveH.Handle, nil)
+	pingH := handler.NewPingHandler(noopPinger{})
+	router := handler.NewRouter(shortenH.Handle, shortenJSONH.Handle, resolveH.Handle, pingH.Handle, nil)
 
 	return router.Handler()
 }

@@ -2,17 +2,8 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"sync"
 )
-
-var ErrNotFound = errors.New("not found")
-var ErrIDExists = errors.New("id already exists")
-
-type URLStore interface {
-	Save(ctx context.Context, id string, original string) error
-	Get(ctx context.Context, id string) (string, error)
-}
 
 type MemStore struct {
 	mu   sync.RWMutex
@@ -20,15 +11,19 @@ type MemStore struct {
 }
 
 func NewMemStore() *MemStore {
-	return &MemStore{data: make(map[string]string)}
+	return &MemStore{
+		data: make(map[string]string),
+	}
 }
 
 func (m *MemStore) Save(_ context.Context, id string, original string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	if _, exists := m.data[id]; exists {
 		return ErrIDExists
 	}
+
 	m.data[id] = original
 	return nil
 }
@@ -37,9 +32,14 @@ func (m *MemStore) Get(_ context.Context, id string) (string, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	v, ok := m.data[id]
+	original, ok := m.data[id]
 	if !ok {
 		return "", ErrNotFound
 	}
-	return v, nil
+
+	return original, nil
+}
+
+func (m *MemStore) Ping(_ context.Context) error {
+	return nil
 }

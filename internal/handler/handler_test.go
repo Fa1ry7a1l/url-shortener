@@ -28,17 +28,22 @@ func (f gzipFakeSvc) Resolve(ctx context.Context, id string) (string, error) {
 	return f.resolveFn(ctx, id)
 }
 
+type noopPinger struct{}
+
+func (noopPinger) Ping(_ context.Context) error { return nil }
 func newGzipTestHandler(t *testing.T, svc handler.ShortenerService) http.Handler {
 	t.Helper()
 
 	shortenH := handler.NewShortenHandler(svc)
 	shortenJSONH := handler.NewShortenJSONHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
+	pingH := handler.NewPingHandler(noopPinger{})
 
 	router := handler.NewRouter(
 		shortenH.Handle,
 		shortenJSONH.Handle,
 		resolveH.Handle,
+		pingH.Handle,
 		nil,
 	)
 

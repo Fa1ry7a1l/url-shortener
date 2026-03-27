@@ -12,6 +12,7 @@ type Router struct {
 	shorten     http.HandlerFunc
 	shortenJSON http.HandlerFunc
 	resolve     http.HandlerFunc
+	ping        http.HandlerFunc
 	logger      appLogger.Logger
 }
 
@@ -19,12 +20,14 @@ func NewRouter(
 	shorten http.HandlerFunc,
 	shortenJSON http.HandlerFunc,
 	resolve http.HandlerFunc,
+	ping http.HandlerFunc,
 	logger appLogger.Logger,
 ) *Router {
 	return &Router{
 		shorten:     shorten,
 		shortenJSON: shortenJSON,
 		resolve:     resolve,
+		ping:        ping,
 		logger:      logger,
 	}
 }
@@ -47,6 +50,7 @@ func (rt *Router) Handler() http.Handler {
 
 	r.Post("/", rt.shorten)
 	r.Post("/api/shorten", rt.shortenJSON)
+	r.Get("/ping", rt.ping)
 	r.Get("/{id}", rt.resolve)
 
 	return r
