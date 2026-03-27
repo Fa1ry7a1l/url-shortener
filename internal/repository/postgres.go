@@ -4,10 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/golang-migrate/migrate/v4"
+	postgresMigrate "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/lib/pq"
 )
+
+const migrationsPath = "file://migrations"
 
 type PostgresStore struct {
 	db *sql.DB
@@ -23,7 +29,7 @@ func NewPostgresStore(dsn string) (*PostgresStore, error) {
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
@@ -31,7 +37,35 @@ func NewPostgresStore(dsn string) (*PostgresStore, error) {
 		return nil, err
 	}
 
+	if err := runMigrations(db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+
 	return &PostgresStore{db: db}, nil
+}
+
+func runMigrations(db *sql.DB) error {
+	driver, err := postgresMigrate.WithInstance(db, &postgresMigrate.Config{})
+	if err != nil {
+		return fmt.Errorf("create migrate driver: %w", err)
+	}
+
+	m, err := migrate.NewWithDatabaseInstance(
+		migrationsPath,
+		"postgres",
+		driver,
+	)
+	if err != nil {
+		return fmt.Errorf("create migrate instance: %w", err)
+	}
+
+	err = m.Up()
+	if err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("apply migrations: %w", err)
+	}
+
+	return nil
 }
 
 func (p *PostgresStore) Save(ctx context.Context, id string, original string) error {
@@ -40,7 +74,15 @@ INSERT INTO short_urls (id, original_url)
 VALUES ($1, $2)
 `
 	_, err := p.db.ExecContext(ctx, query, id, original)
-	return err
+	if err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			return ErrIDExists
+		}
+		return err
+	}
+
+	return nil
 }
 
 func (p *PostgresStore) Get(ctx context.Context, id string) (string, error) {
@@ -50,6 +92,7 @@ FROM short_urls
 WHERE id = $1
 `
 	var original string
+
 	err := p.db.QueryRowContext(ctx, query, id).Scan(&original)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
@@ -57,6 +100,7 @@ WHERE id = $1
 	if err != nil {
 		return "", err
 	}
+
 	return original, nil
 }
 
