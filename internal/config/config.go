@@ -18,7 +18,7 @@ const (
 	defaultAddr            = "localhost:8080"
 	defaultBaseURL         = "http://localhost:8080"
 	defaultIDLength        = 8
-	defaultFileStoragePath = "shortener-db.json"
+	defaultFileStoragePath = ""
 	defaultDatabaseDSN     = ""
 )
 
@@ -54,7 +54,7 @@ func Parse(args []string) (*Config, error) {
 	if cfg.IDLength <= 0 {
 		cfg.IDLength = defaultIDLength
 	}
-	if cfg.FileStoragePath == "" {
+	if cfg.FileStoragePath == "" { //останется для сходства с остальными параметрами
 		cfg.FileStoragePath = defaultFileStoragePath
 	}
 

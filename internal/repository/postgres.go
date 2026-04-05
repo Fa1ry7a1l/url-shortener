@@ -74,13 +74,14 @@ VALUES ($1, $2)
 	_, err := p.db.ExecContext(ctx, query, id, original)
 	if err != nil {
 		var pqErr *pq.Error
-		if errors.As(err, &pqErr) {
-			switch string(pqErr.Code) {
-			case pgerrcode.UniqueViolation:
-				if pqErr.Constraint == "short_urls_pkey" {
-					return ErrIDExists
-				}
+		if errors.As(err, &pqErr) && string(pqErr.Code) == pgerrcode.UniqueViolation {
+			switch pqErr.Constraint {
+			case "short_urls_pkey":
+				return ErrIDExists
+			case "short_urls_original_url_uq":
 				return ErrOriginalURLExist
+			default:
+				return err
 			}
 		}
 		return err
@@ -120,8 +121,15 @@ VALUES ` + strings.Join(valueParts, ",")
 	_, err = tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
-			return ErrIDExists
+		if errors.As(err, &pqErr) && string(pqErr.Code) == pgerrcode.UniqueViolation {
+			switch pqErr.Constraint {
+			case "short_urls_pkey":
+				return ErrIDExists
+			case "short_urls_original_url_uq":
+				return ErrOriginalURLExist
+			default:
+				return err
+			}
 		}
 		return err
 	}

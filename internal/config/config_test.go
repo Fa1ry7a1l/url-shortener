@@ -76,7 +76,7 @@ func TestParse_FileStoragePath_Default(t *testing.T) {
 
 	cfg, err := config.Parse(nil)
 	require.NoError(t, err)
-	require.Equal(t, "shortener-db.json", cfg.FileStoragePath)
+	require.Equal(t, "", cfg.FileStoragePath)
 }
 
 func TestParse_FileStoragePath_Flag(t *testing.T) {
