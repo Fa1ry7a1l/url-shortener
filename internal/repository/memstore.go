@@ -28,6 +28,23 @@ func (m *MemStore) Save(_ context.Context, id string, original string) error {
 	return nil
 }
 
+func (m *MemStore) SaveBatch(_ context.Context, items []BatchItem) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, item := range items {
+		if _, exists := m.data[item.ID]; exists {
+			return ErrIDExists
+		}
+	}
+
+	for _, item := range items {
+		m.data[item.ID] = item.Original
+	}
+
+	return nil
+}
+
 func (m *MemStore) Get(_ context.Context, id string) (string, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

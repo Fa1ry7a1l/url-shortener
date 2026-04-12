@@ -44,9 +44,32 @@ func (f *FileStore) Save(_ context.Context, id string, original string) error {
 	}
 
 	f.data[id] = original
-
 	if err := f.flush(); err != nil {
 		delete(f.data, id)
+		return err
+	}
+
+	return nil
+}
+
+func (f *FileStore) SaveBatch(_ context.Context, items []BatchItem) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	for _, item := range items {
+		if _, exists := f.data[item.ID]; exists {
+			return ErrIDExists
+		}
+	}
+
+	for _, item := range items {
+		f.data[item.ID] = item.Original
+	}
+
+	if err := f.flush(); err != nil {
+		for _, item := range items {
+			delete(f.data, item.ID)
+		}
 		return err
 	}
 

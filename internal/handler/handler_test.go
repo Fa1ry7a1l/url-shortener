@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Fa1ry7a1l/url-shortener/internal/service"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Fa1ry7a1l/url-shortener/internal/handler"
@@ -18,6 +19,10 @@ import (
 type gzipFakeSvc struct {
 	shortenFn func(ctx context.Context, original string) (string, error)
 	resolveFn func(ctx context.Context, id string) (string, error)
+}
+
+func (f gzipFakeSvc) ShortenBatch(ctx context.Context, items []service.BatchRequestItem) ([]service.BatchResponseItem, error) {
+	return nil, nil
 }
 
 func (f gzipFakeSvc) Shorten(ctx context.Context, original string) (string, error) {
@@ -37,11 +42,13 @@ func newGzipTestHandler(t *testing.T, svc handler.ShortenerService) http.Handler
 	shortenH := handler.NewShortenHandler(svc)
 	shortenJSONH := handler.NewShortenJSONHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
+	shortenBatchH := handler.NewShortenBatchHandler(svc)
 	pingH := handler.NewPingHandler(noopPinger{})
 
 	router := handler.NewRouter(
 		shortenH.Handle,
 		shortenJSONH.Handle,
+		shortenBatchH.Handle,
 		resolveH.Handle,
 		pingH.Handle,
 		nil,

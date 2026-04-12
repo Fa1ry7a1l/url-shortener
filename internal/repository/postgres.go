@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -51,11 +52,7 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("create migrate driver: %w", err)
 	}
 
-	m, err := migrate.NewWithDatabaseInstance(
-		migrationsPath,
-		"postgres",
-		driver,
-	)
+	m, err := migrate.NewWithDatabaseInstance(migrationsPath, "postgres", driver)
 	if err != nil {
 		return fmt.Errorf("create migrate instance: %w", err)
 	}
@@ -79,6 +76,50 @@ VALUES ($1, $2)
 		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
 			return ErrIDExists
 		}
+		return err
+	}
+
+	return nil
+}
+
+func (p *PostgresStore) SaveBatch(ctx context.Context, items []BatchItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	var (
+		valueParts []string
+		args       []any
+	)
+
+	for i, item := range items {
+		n := i*2 + 1
+		valueParts = append(valueParts, fmt.Sprintf("($%d, $%d)", n, n+1))
+		args = append(args, item.ID, item.Original)
+	}
+
+	query := `
+INSERT INTO short_urls (id, original_url)
+VALUES ` + strings.Join(valueParts, ",")
+
+	_, err = tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			return ErrIDExists
+		}
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 
