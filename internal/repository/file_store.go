@@ -43,6 +43,12 @@ func (f *FileStore) Save(_ context.Context, id string, original string) error {
 		return ErrIDExists
 	}
 
+	for _, existingOriginal := range f.data {
+		if existingOriginal == original {
+			return ErrOriginalURLExist
+		}
+	}
+
 	f.data[id] = original
 	if err := f.flush(); err != nil {
 		delete(f.data, id)
@@ -60,6 +66,11 @@ func (f *FileStore) SaveBatch(_ context.Context, items []BatchItem) error {
 		if _, exists := f.data[item.ID]; exists {
 			return ErrIDExists
 		}
+		for _, existingOriginal := range f.data {
+			if existingOriginal == item.Original {
+				return ErrOriginalURLExist
+			}
+		}
 	}
 
 	for _, item := range items {
@@ -74,6 +85,19 @@ func (f *FileStore) SaveBatch(_ context.Context, items []BatchItem) error {
 	}
 
 	return nil
+}
+
+func (f *FileStore) GetByOriginal(_ context.Context, original string) (string, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	for id, existingOriginal := range f.data {
+		if existingOriginal == original {
+			return id, nil
+		}
+	}
+
+	return "", ErrNotFound
 }
 
 func (f *FileStore) Get(_ context.Context, id string) (string, error) {

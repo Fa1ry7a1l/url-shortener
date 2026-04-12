@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/Fa1ry7a1l/url-shortener/internal/service"
 )
 
 type ShortenHandler struct {
@@ -28,6 +31,14 @@ func (h *ShortenHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 	short, err := h.svc.Shorten(r.Context(), body)
 	if err != nil {
+		var conflictErr *service.ConflictError
+		if errors.As(err, &conflictErr) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusConflict)
+			_, _ = io.WriteString(w, conflictErr.ShortURL)
+			return
+		}
+
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}

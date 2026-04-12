@@ -22,6 +22,10 @@ type errStore struct {
 	err error
 }
 
+func (e errStore) GetByOriginal(ctx context.Context, original string) (string, error) {
+	return "", e.err
+}
+
 func (e errStore) Save(ctx context.Context, id string, original string) error {
 	return e.err
 }
@@ -173,4 +177,20 @@ func TestShortener_Shorten_RetriesOnCollision(t *testing.T) {
 	got, err := store.Get(context.Background(), "uniq")
 	require.NoError(t, err)
 	require.Equal(t, "https://example.com", got)
+}
+
+func TestShortener_Shorten_ExistingOriginal_ReturnsConflict(t *testing.T) {
+	store := repository.NewMemStore()
+	gen := fixedIDGen{id: "newid"}
+
+	require.NoError(t, store.Save(context.Background(), "oldid", "https://example.com"))
+
+	svc := service.NewShortener(store, gen, "http://localhost:8080")
+
+	_, err := svc.Shorten(context.Background(), "https://example.com")
+	require.Error(t, err)
+
+	var conflictErr *service.ConflictError
+	require.ErrorAs(t, err, &conflictErr)
+	require.Equal(t, "http://localhost:8080/oldid", conflictErr.ShortURL)
 }
