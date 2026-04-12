@@ -10,15 +10,20 @@ import (
 )
 
 type Shortener struct {
-	store          repository.URLStore
+	store          repository.Store
 	idgen          IDGenerator
 	baseURL        string
 	maxSaveRetries int
 }
 
-func NewShortener(store repository.URLStore, idgen IDGenerator, baseURL string) *Shortener {
+func NewShortener(store repository.Store, idgen IDGenerator, baseURL string) *Shortener {
 	baseURL = strings.TrimRight(baseURL, "/")
-	return &Shortener{store: store, idgen: idgen, baseURL: baseURL, maxSaveRetries: 10}
+	return &Shortener{
+		store:          store,
+		idgen:          idgen,
+		baseURL:        baseURL,
+		maxSaveRetries: 10,
+	}
 }
 
 func (s *Shortener) Shorten(ctx context.Context, original string) (string, error) {
@@ -62,8 +67,5 @@ func isValidURL(raw string) bool {
 	if u.Scheme == "" || u.Host == "" {
 		return false
 	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return false
-	}
-	return true
+	return u.Scheme == "http" || u.Scheme == "https"
 }

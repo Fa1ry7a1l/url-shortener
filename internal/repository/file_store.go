@@ -64,6 +64,10 @@ func (f *FileStore) Get(_ context.Context, id string) (string, error) {
 	return v, nil
 }
 
+func (f *FileStore) Ping(_ context.Context) error {
+	return nil
+}
+
 func (f *FileStore) load() error {
 	if _, err := os.Stat(f.path); errors.Is(err, os.ErrNotExist) {
 		return nil

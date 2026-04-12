@@ -13,7 +13,6 @@ import (
 	appLogger "github.com/Fa1ry7a1l/url-shortener/internal/logger"
 	"github.com/Fa1ry7a1l/url-shortener/internal/repository"
 	"github.com/Fa1ry7a1l/url-shortener/internal/service"
-	"go.uber.org/zap"
 )
 
 func main() {
@@ -30,21 +29,25 @@ func main() {
 		_ = log.Sync()
 	}()
 
-	store, err := repository.NewFileStore(cfg.FileStoragePath)
+	store, Close, err := initStorage(cfg)
 	if err != nil {
-		panic(err)
+		log.Fatal(fmt.Sprintf("Failed to initialize storage, e=%s", err.Error()))
 	}
+	defer Close()
+
 	idgen := service.NewRandomID(cfg.IDLength)
 	svc := service.NewShortener(store, idgen, cfg.BaseURL)
 
 	shortenH := handler.NewShortenHandler(svc)
 	shortenJSONH := handler.NewShortenJSONHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
+	pingH := handler.NewPingHandler(store)
 
 	router := handler.NewRouter(
 		shortenH.Handle,
 		shortenJSONH.Handle,
 		resolveH.Handle,
+		pingH.Handle,
 		log,
 	)
 	srv := &http.Server{
@@ -58,13 +61,31 @@ func main() {
 		panic(err)
 	}
 
-	log.Info("server started",
-		zap.String("addr", cfg.Addr),
-		zap.String("base_url", cfg.BaseURL),
-	)
-
 	fmt.Printf("listening on http://%s\n", srv.Addr)
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		panic(err)
 	}
+}
+
+func initStorage(cfg *config.Config) (repository.Store, func(), error) {
+	if cfg.DatabaseDSN != "" {
+		pg, err := repository.NewPostgresStore(cfg.DatabaseDSN)
+		if err != nil {
+			return nil, func() {}, err
+		}
+
+		return pg, func() {
+			_ = pg.Close()
+		}, nil
+	}
+	if cfg.FileStoragePath != "" {
+		fs, err := repository.NewFileStore(cfg.FileStoragePath)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		return fs, func() {}, nil
+	}
+	ms := repository.NewMemStore()
+	return ms, func() {}, nil
 }
