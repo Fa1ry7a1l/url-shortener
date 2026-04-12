@@ -4,10 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/golang-migrate/migrate/v4"
+	postgresMigrate "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/lib/pq"
 )
+
+const migrationsPath = "file://migrations"
 
 type PostgresStore struct {
 	db *sql.DB
@@ -23,7 +29,7 @@ func NewPostgresStore(dsn string) (*PostgresStore, error) {
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
@@ -31,25 +37,35 @@ func NewPostgresStore(dsn string) (*PostgresStore, error) {
 		return nil, err
 	}
 
-	store := &PostgresStore{db: db}
-
-	if err := store.init(ctx); err != nil {
+	if err := runMigrations(db); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 
-	return store, nil
+	return &PostgresStore{db: db}, nil
 }
 
-func (p *PostgresStore) init(ctx context.Context) error {
-	const query = `
-CREATE TABLE IF NOT EXISTS short_urls (
-    id TEXT PRIMARY KEY,
-    original_url TEXT NOT NULL
-);
-`
-	_, err := p.db.ExecContext(ctx, query)
-	return err
+func runMigrations(db *sql.DB) error {
+	driver, err := postgresMigrate.WithInstance(db, &postgresMigrate.Config{})
+	if err != nil {
+		return fmt.Errorf("create migrate driver: %w", err)
+	}
+
+	m, err := migrate.NewWithDatabaseInstance(
+		migrationsPath,
+		"postgres",
+		driver,
+	)
+	if err != nil {
+		return fmt.Errorf("create migrate instance: %w", err)
+	}
+
+	err = m.Up()
+	if err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("apply migrations: %w", err)
+	}
+
+	return nil
 }
 
 func (p *PostgresStore) Save(ctx context.Context, id string, original string) error {
@@ -59,13 +75,13 @@ VALUES ($1, $2)
 `
 	_, err := p.db.ExecContext(ctx, query, id, original)
 	if err != nil {
-		// 23505 = unique_violation
-		var pqErr interface{ SQLState() string }
-		if errors.As(err, &pqErr) && pqErr.SQLState() == "23505" {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
 			return ErrIDExists
 		}
 		return err
 	}
+
 	return nil
 }
 
@@ -76,6 +92,7 @@ FROM short_urls
 WHERE id = $1
 `
 	var original string
+
 	err := p.db.QueryRowContext(ctx, query, id).Scan(&original)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
@@ -83,6 +100,7 @@ WHERE id = $1
 	if err != nil {
 		return "", err
 	}
+
 	return original, nil
 }
 
