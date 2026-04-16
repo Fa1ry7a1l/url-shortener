@@ -47,7 +47,9 @@ func TestManager_MiddlewareIssuesCookieWhenMissing(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.NotEmpty(t, gotUserID)
 
-	cookie := findAuthCookie(rr.Result().Cookies())
+	resp := rr.Result()
+	defer resp.Body.Close()
+	cookie := findAuthCookie(resp.Cookies())
 	require.NotNil(t, cookie)
 
 	claims, err := manager.Parse(cookie.Value)
@@ -71,7 +73,9 @@ func TestManager_MiddlewareReissuesCookieWhenInvalid(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.NotEmpty(t, gotUserID)
-	require.NotNil(t, findAuthCookie(rr.Result().Cookies()))
+	resp := rr.Result()
+	defer resp.Body.Close()
+	require.NotNil(t, findAuthCookie(resp.Cookies()))
 }
 
 func TestManager_MiddlewareDoesNotAuthenticateTokenWithoutUserID(t *testing.T) {
@@ -92,7 +96,9 @@ func TestManager_MiddlewareDoesNotAuthenticateTokenWithoutUserID(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.False(t, authenticated)
-	require.Nil(t, findAuthCookie(rr.Result().Cookies()))
+	resp := rr.Result()
+	defer resp.Body.Close()
+	require.Nil(t, findAuthCookie(resp.Cookies()))
 }
 
 func findAuthCookie(cookies []*http.Cookie) *http.Cookie {
