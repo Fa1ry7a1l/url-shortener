@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/Fa1ry7a1l/url-shortener/internal/auth"
 	"github.com/Fa1ry7a1l/url-shortener/internal/repository"
@@ -40,16 +41,33 @@ type Shortener struct {
 	idgen          IDGenerator
 	baseURL        string
 	maxSaveRetries int
+	deleteQueue    chan deleteItem
 }
+
+type deleteItem struct {
+	userID string
+	id     string
+}
+
+const (
+	deleteQueueSize     = 4096
+	deleteBatchSize     = 256
+	deleteFlushInterval = 100 * time.Millisecond
+)
 
 func NewShortener(store repository.Store, idgen IDGenerator, baseURL string) *Shortener {
 	baseURL = strings.TrimRight(baseURL, "/")
-	return &Shortener{
+	s := &Shortener{
 		store:          store,
 		idgen:          idgen,
 		baseURL:        baseURL,
 		maxSaveRetries: 10,
+		deleteQueue:    make(chan deleteItem, deleteQueueSize),
 	}
+
+	go s.RunDeleteWorker(context.Background())
+
+	return s
 }
 
 func (s *Shortener) Shorten(ctx context.Context, original string) (string, error) {
@@ -176,6 +194,70 @@ func (s *Shortener) UserURLs(ctx context.Context) ([]UserURL, error) {
 	}
 
 	return result, nil
+}
+
+func (s *Shortener) DeleteURLs(ctx context.Context, ids []string) error {
+	userID, ok := auth.UserIDFromContext(ctx)
+	if !ok {
+		return ErrUnauthorized
+	}
+	if len(ids) == 0 {
+		return errors.New("empty ids")
+	}
+
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" || strings.Contains(id, "/") {
+			return errors.New("invalid id")
+		}
+
+		select {
+		case s.deleteQueue <- deleteItem{userID: userID, id: id}:
+		default:
+			return errors.New("delete queue is full")
+		}
+	}
+
+	return nil
+}
+
+func (s *Shortener) RunDeleteWorker(ctx context.Context) {
+	ticker := time.NewTicker(deleteFlushInterval)
+	defer ticker.Stop()
+
+	batch := make([]deleteItem, 0, deleteBatchSize)
+
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+
+		grouped := make(map[string][]string)
+		for _, item := range batch {
+			grouped[item.userID] = append(grouped[item.userID], item.id)
+		}
+
+		for userID, ids := range grouped {
+			_ = s.store.DeleteBatchByUser(ctx, userID, ids)
+		}
+
+		batch = batch[:0]
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			flush()
+			return
+		case item := <-s.deleteQueue:
+			batch = append(batch, item)
+			if len(batch) >= deleteBatchSize {
+				flush()
+			}
+		case <-ticker.C:
+			flush()
+		}
+	}
 }
 
 func isValidURL(raw string) bool {

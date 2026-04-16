@@ -11,4 +11,5 @@ type ShortenerService interface {
 	ShortenBatch(ctx context.Context, items []service.BatchRequestItem) ([]service.BatchResponseItem, error)
 	Resolve(ctx context.Context, id string) (string, error)
 	UserURLs(ctx context.Context) ([]service.UserURL, error)
+	DeleteURLs(ctx context.Context, ids []string) error
 }

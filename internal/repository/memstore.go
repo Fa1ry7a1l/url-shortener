@@ -9,12 +9,14 @@ type MemStore struct {
 	mu      sync.RWMutex
 	data    map[string]string
 	userIDs map[string]string
+	deleted map[string]bool
 }
 
 func NewMemStore() *MemStore {
 	return &MemStore{
 		data:    make(map[string]string),
 		userIDs: make(map[string]string),
+		deleted: make(map[string]bool),
 	}
 }
 
@@ -38,6 +40,7 @@ func (m *MemStore) SaveForUser(_ context.Context, id string, original string, us
 
 	m.data[id] = original
 	m.userIDs[id] = userID
+	m.deleted[id] = false
 	return nil
 }
 
@@ -59,6 +62,7 @@ func (m *MemStore) SaveBatch(_ context.Context, items []BatchItem) error {
 	for _, item := range items {
 		m.data[item.ID] = item.Original
 		m.userIDs[item.ID] = item.UserID
+		m.deleted[item.ID] = false
 	}
 
 	return nil
@@ -72,8 +76,32 @@ func (m *MemStore) Get(_ context.Context, id string) (string, error) {
 	if !ok {
 		return "", ErrNotFound
 	}
+	if m.deleted[id] {
+		return "", ErrDeleted
+	}
 
 	return original, nil
+}
+
+func (m *MemStore) DeleteBatchByUser(_ context.Context, userID string, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, id := range ids {
+		if m.userIDs[id] != userID {
+			continue
+		}
+		if _, exists := m.data[id]; !exists {
+			continue
+		}
+		m.deleted[id] = true
+	}
+
+	return nil
 }
 
 func (m *MemStore) GetByOriginal(_ context.Context, original string) (string, error) {
@@ -96,6 +124,9 @@ func (m *MemStore) GetByUser(_ context.Context, userID string) ([]UserURL, error
 	result := make([]UserURL, 0)
 	for id, existingUserID := range m.userIDs {
 		if existingUserID != userID {
+			continue
+		}
+		if m.deleted[id] {
 			continue
 		}
 		result = append(result, UserURL{

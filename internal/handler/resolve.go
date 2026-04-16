@@ -25,6 +25,10 @@ func (h *ResolveHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 	original, err := h.svc.Resolve(r.Context(), id)
 	if err != nil {
+		if errors.Is(err, repository.ErrDeleted) {
+			http.Error(w, "gone", http.StatusGone)
+			return
+		}
 		if errors.Is(err, repository.ErrNotFound) {
 			http.Error(w, "not found", http.StatusNotFound)
 			return

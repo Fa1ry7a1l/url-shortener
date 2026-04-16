@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/Fa1ry7a1l/url-shortener/internal/auth"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Fa1ry7a1l/url-shortener/internal/repository"
@@ -40,6 +42,10 @@ func (e errStore) SaveBatch(ctx context.Context, items []repository.BatchItem) e
 
 func (e errStore) Get(ctx context.Context, id string) (string, error) {
 	return "", e.err
+}
+
+func (e errStore) DeleteBatchByUser(ctx context.Context, userID string, ids []string) error {
+	return e.err
 }
 
 func (e errStore) Ping(ctx context.Context) error {
@@ -201,4 +207,32 @@ func TestShortener_Shorten_ExistingOriginal_ReturnsConflict(t *testing.T) {
 	var conflictErr *service.ConflictError
 	require.ErrorAs(t, err, &conflictErr)
 	require.Equal(t, "http://localhost:8080/oldid", conflictErr.ShortURL)
+}
+
+func TestShortener_DeleteURLs_Unauthorized(t *testing.T) {
+	store := repository.NewMemStore()
+	svc := service.NewShortener(store, fixedIDGen{id: "x"}, "http://localhost:8080")
+
+	err := svc.DeleteURLs(context.Background(), []string{"id"})
+	require.ErrorIs(t, err, service.ErrUnauthorized)
+}
+
+func TestShortener_DeleteURLs_OwnerOnly(t *testing.T) {
+	store := repository.NewMemStore()
+	require.NoError(t, store.SaveForUser(context.Background(), "id1", "https://example.com/1", "user-1"))
+	require.NoError(t, store.SaveForUser(context.Background(), "id2", "https://example.com/2", "user-2"))
+
+	svc := service.NewShortener(store, fixedIDGen{id: "x"}, "http://localhost:8080")
+	ctx := auth.ContextWithUserID(context.Background(), "user-1")
+
+	require.NoError(t, svc.DeleteURLs(ctx, []string{"id1", "id2"}))
+
+	require.Eventually(t, func() bool {
+		_, err := svc.Resolve(context.Background(), "id1")
+		return errors.Is(err, repository.ErrDeleted)
+	}, time.Second, 20*time.Millisecond)
+
+	url, err := svc.Resolve(context.Background(), "id2")
+	require.NoError(t, err)
+	require.Equal(t, "https://example.com/2", url)
 }

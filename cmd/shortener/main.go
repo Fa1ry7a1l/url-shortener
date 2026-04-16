@@ -44,6 +44,7 @@ func main() {
 	shortenBatchH := handler.NewShortenBatchHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
 	userURLsH := handler.NewUserURLsHandler(svc)
+	deleteUserURLsH := handler.NewDeleteUserURLsHandler(svc)
 	pingH := handler.NewPingHandler(store)
 	authManager := auth.NewManager(cfg.AuthSecret, auth.DefaultTTL)
 
@@ -53,6 +54,7 @@ func main() {
 		shortenBatchH.Handle,
 		resolveH.Handle,
 		userURLsH.Handle,
+		deleteUserURLsH.Handle,
 		pingH.Handle,
 		log,
 		authManager,
