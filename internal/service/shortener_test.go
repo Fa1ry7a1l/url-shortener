@@ -30,6 +30,10 @@ func (e errStore) Save(ctx context.Context, id string, original string) error {
 	return e.err
 }
 
+func (e errStore) SaveForUser(ctx context.Context, id string, original string, userID string) error {
+	return e.err
+}
+
 func (e errStore) SaveBatch(ctx context.Context, items []repository.BatchItem) error {
 	return e.err
 }
@@ -40,6 +44,10 @@ func (e errStore) Get(ctx context.Context, id string) (string, error) {
 
 func (e errStore) Ping(ctx context.Context) error {
 	return e.err
+}
+
+func (e errStore) GetByUser(ctx context.Context, userID string) ([]repository.UserURL, error) {
+	return nil, e.err
 }
 
 func TestShortener_Shorten_OK(t *testing.T) {

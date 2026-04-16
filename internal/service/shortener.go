@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/Fa1ry7a1l/url-shortener/internal/auth"
 	"github.com/Fa1ry7a1l/url-shortener/internal/repository"
 )
 
@@ -18,6 +19,13 @@ type BatchResponseItem struct {
 	CorrelationID string
 	ShortURL      string
 }
+
+type UserURL struct {
+	ShortURL    string
+	OriginalURL string
+}
+
+var ErrUnauthorized = errors.New("missing user id")
 
 type ConflictError struct {
 	ShortURL string
@@ -49,6 +57,7 @@ func (s *Shortener) Shorten(ctx context.Context, original string) (string, error
 	if !isValidURL(original) {
 		return "", errors.New("invalid url")
 	}
+	userID, _ := auth.UserIDFromContext(ctx)
 
 	for i := 0; i < s.maxSaveRetries; i++ {
 		id, err := s.idgen.NewID()
@@ -56,7 +65,7 @@ func (s *Shortener) Shorten(ctx context.Context, original string) (string, error
 			return "", err
 		}
 
-		err = s.store.Save(ctx, id, original)
+		err = s.store.SaveForUser(ctx, id, original, userID)
 		if err == nil {
 			return s.baseURL + "/" + id, nil
 		}
@@ -89,6 +98,7 @@ func (s *Shortener) ShortenBatch(ctx context.Context, items []BatchRequestItem) 
 	result := make([]BatchResponseItem, 0, len(items))
 	storeItems := make([]repository.BatchItem, 0, len(items))
 	usedIDs := make(map[string]struct{})
+	userID, _ := auth.UserIDFromContext(ctx)
 
 	for _, item := range items {
 		original := strings.TrimSpace(item.OriginalURL)
@@ -118,6 +128,7 @@ func (s *Shortener) ShortenBatch(ctx context.Context, items []BatchRequestItem) 
 		storeItems = append(storeItems, repository.BatchItem{
 			ID:       id,
 			Original: original,
+			UserID:   userID,
 		})
 		result = append(result, BatchResponseItem{
 			CorrelationID: item.CorrelationID,
@@ -143,6 +154,28 @@ func (s *Shortener) Resolve(ctx context.Context, id string) (string, error) {
 		return "", errors.New("invalid id")
 	}
 	return s.store.Get(ctx, id)
+}
+
+func (s *Shortener) UserURLs(ctx context.Context) ([]UserURL, error) {
+	userID, ok := auth.UserIDFromContext(ctx)
+	if !ok {
+		return nil, ErrUnauthorized
+	}
+
+	items, err := s.store.GetByUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]UserURL, 0, len(items))
+	for _, item := range items {
+		result = append(result, UserURL{
+			ShortURL:    s.baseURL + "/" + item.ID,
+			OriginalURL: item.Original,
+		})
+	}
+
+	return result, nil
 }
 
 func isValidURL(raw string) bool {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/Fa1ry7a1l/url-shortener/internal/auth"
 	"github.com/Fa1ry7a1l/url-shortener/internal/config"
 	"github.com/Fa1ry7a1l/url-shortener/internal/handler"
 	appLogger "github.com/Fa1ry7a1l/url-shortener/internal/logger"
@@ -42,15 +43,19 @@ func main() {
 	shortenJSONH := handler.NewShortenJSONHandler(svc)
 	shortenBatchH := handler.NewShortenBatchHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
+	userURLsH := handler.NewUserURLsHandler(svc)
 	pingH := handler.NewPingHandler(store)
+	authManager := auth.NewManager(cfg.AuthSecret, auth.DefaultTTL)
 
 	router := handler.NewRouter(
 		shortenH.Handle,
 		shortenJSONH.Handle,
 		shortenBatchH.Handle,
 		resolveH.Handle,
+		userURLsH.Handle,
 		pingH.Handle,
 		log,
+		authManager,
 	)
 	srv := &http.Server{
 		Addr:              cfg.Addr,

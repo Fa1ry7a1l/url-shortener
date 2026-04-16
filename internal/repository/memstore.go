@@ -6,17 +6,23 @@ import (
 )
 
 type MemStore struct {
-	mu   sync.RWMutex
-	data map[string]string
+	mu      sync.RWMutex
+	data    map[string]string
+	userIDs map[string]string
 }
 
 func NewMemStore() *MemStore {
 	return &MemStore{
-		data: make(map[string]string),
+		data:    make(map[string]string),
+		userIDs: make(map[string]string),
 	}
 }
 
-func (m *MemStore) Save(_ context.Context, id string, original string) error {
+func (m *MemStore) Save(ctx context.Context, id string, original string) error {
+	return m.SaveForUser(ctx, id, original, "")
+}
+
+func (m *MemStore) SaveForUser(_ context.Context, id string, original string, userID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -31,6 +37,7 @@ func (m *MemStore) Save(_ context.Context, id string, original string) error {
 	}
 
 	m.data[id] = original
+	m.userIDs[id] = userID
 	return nil
 }
 
@@ -51,6 +58,7 @@ func (m *MemStore) SaveBatch(_ context.Context, items []BatchItem) error {
 
 	for _, item := range items {
 		m.data[item.ID] = item.Original
+		m.userIDs[item.ID] = item.UserID
 	}
 
 	return nil
@@ -79,6 +87,24 @@ func (m *MemStore) GetByOriginal(_ context.Context, original string) (string, er
 	}
 
 	return "", ErrNotFound
+}
+
+func (m *MemStore) GetByUser(_ context.Context, userID string) ([]UserURL, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	result := make([]UserURL, 0)
+	for id, existingUserID := range m.userIDs {
+		if existingUserID != userID {
+			continue
+		}
+		result = append(result, UserURL{
+			ID:       id,
+			Original: m.data[id],
+		})
+	}
+
+	return result, nil
 }
 
 func (m *MemStore) Ping(_ context.Context) error {
