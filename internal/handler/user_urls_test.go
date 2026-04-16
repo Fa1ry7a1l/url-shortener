@@ -51,7 +51,9 @@ func TestAPI_UserURLs_ReturnsUserLinks(t *testing.T) {
 
 	require.Equal(t, http.StatusCreated, rr.Code)
 	shortURL := rr.Body.String()
-	cookies := rr.Result().Cookies()
+	resp := rr.Result()
+	defer resp.Body.Close()
+	cookies := resp.Cookies()
 	require.NotEmpty(t, cookies)
 
 	req = httptest.NewRequest(http.MethodGet, "http://example.com/api/user/urls", nil)
