@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -38,6 +39,9 @@ func main() {
 
 	idgen := service.NewRandomID(cfg.IDLength)
 	svc := service.NewShortener(store, idgen, cfg.BaseURL)
+	workerCtx, stopWorker := context.WithCancel(context.Background())
+	defer stopWorker()
+	go svc.RunDeleteWorker(workerCtx)
 
 	shortenH := handler.NewShortenHandler(svc)
 	shortenJSONH := handler.NewShortenJSONHandler(svc)

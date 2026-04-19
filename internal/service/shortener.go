@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Fa1ry7a1l/url-shortener/internal/auth"
 	"github.com/Fa1ry7a1l/url-shortener/internal/repository"
 )
 
@@ -57,17 +56,13 @@ const (
 
 func NewShortener(store repository.Store, idgen IDGenerator, baseURL string) *Shortener {
 	baseURL = strings.TrimRight(baseURL, "/")
-	s := &Shortener{
+	return &Shortener{
 		store:          store,
 		idgen:          idgen,
 		baseURL:        baseURL,
 		maxSaveRetries: 10,
 		deleteQueue:    make(chan deleteItem, deleteQueueSize),
 	}
-
-	go s.RunDeleteWorker(context.Background())
-
-	return s
 }
 
 func (s *Shortener) Shorten(ctx context.Context, original string) (string, error) {
@@ -75,7 +70,7 @@ func (s *Shortener) Shorten(ctx context.Context, original string) (string, error
 	if !isValidURL(original) {
 		return "", errors.New("invalid url")
 	}
-	userID, _ := auth.UserIDFromContext(ctx)
+	userID, _ := UserIDFromContext(ctx)
 
 	for i := 0; i < s.maxSaveRetries; i++ {
 		id, err := s.idgen.NewID()
@@ -116,7 +111,7 @@ func (s *Shortener) ShortenBatch(ctx context.Context, items []BatchRequestItem) 
 	result := make([]BatchResponseItem, 0, len(items))
 	storeItems := make([]repository.BatchItem, 0, len(items))
 	usedIDs := make(map[string]struct{})
-	userID, _ := auth.UserIDFromContext(ctx)
+	userID, _ := UserIDFromContext(ctx)
 
 	for _, item := range items {
 		original := strings.TrimSpace(item.OriginalURL)
@@ -175,7 +170,7 @@ func (s *Shortener) Resolve(ctx context.Context, id string) (string, error) {
 }
 
 func (s *Shortener) UserURLs(ctx context.Context) ([]UserURL, error) {
-	userID, ok := auth.UserIDFromContext(ctx)
+	userID, ok := UserIDFromContext(ctx)
 	if !ok {
 		return nil, ErrUnauthorized
 	}
@@ -197,7 +192,7 @@ func (s *Shortener) UserURLs(ctx context.Context) ([]UserURL, error) {
 }
 
 func (s *Shortener) DeleteURLs(ctx context.Context, ids []string) error {
-	userID, ok := auth.UserIDFromContext(ctx)
+	userID, ok := UserIDFromContext(ctx)
 	if !ok {
 		return ErrUnauthorized
 	}

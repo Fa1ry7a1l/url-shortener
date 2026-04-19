@@ -29,7 +29,7 @@ func (h *ShortenHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	short, err := h.svc.Shorten(r.Context(), body)
+	short, err := h.svc.Shorten(serviceContext(r.Context()), body)
 	if err != nil {
 		var conflictErr *service.ConflictError
 		if errors.As(err, &conflictErr) {

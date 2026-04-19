@@ -44,7 +44,7 @@ func (h *ShortenBatchHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	res, err := h.svc.ShortenBatch(r.Context(), items)
+	res, err := h.svc.ShortenBatch(serviceContext(r.Context()), items)
 	if err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return

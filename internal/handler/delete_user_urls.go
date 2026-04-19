@@ -29,7 +29,7 @@ func (h *DeleteUserURLsHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.DeleteURLs(r.Context(), ids); err != nil {
+	if err := h.svc.DeleteURLs(serviceContext(r.Context()), ids); err != nil {
 		if errors.Is(err, service.ErrUnauthorized) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return

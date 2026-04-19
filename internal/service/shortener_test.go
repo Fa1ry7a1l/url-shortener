@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Fa1ry7a1l/url-shortener/internal/auth"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Fa1ry7a1l/url-shortener/internal/repository"
@@ -223,7 +222,11 @@ func TestShortener_DeleteURLs_OwnerOnly(t *testing.T) {
 	require.NoError(t, store.SaveForUser(context.Background(), "id2", "https://example.com/2", "user-2"))
 
 	svc := service.NewShortener(store, fixedIDGen{id: "x"}, "http://localhost:8080")
-	ctx := auth.ContextWithUserID(context.Background(), "user-1")
+	workerCtx, stopWorker := context.WithCancel(context.Background())
+	defer stopWorker()
+	go svc.RunDeleteWorker(workerCtx)
+
+	ctx := service.ContextWithUserID(context.Background(), "user-1")
 
 	require.NoError(t, svc.DeleteURLs(ctx, []string{"id1", "id2"}))
 

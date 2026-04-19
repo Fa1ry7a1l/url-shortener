@@ -32,7 +32,7 @@ func (h *ShortenJSONHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	short, err := h.svc.Shorten(r.Context(), req.URL)
+	short, err := h.svc.Shorten(serviceContext(r.Context()), req.URL)
 	if err != nil {
 		var conflictErr *service.ConflictError
 		if errors.As(err, &conflictErr) {

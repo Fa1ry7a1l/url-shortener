@@ -22,7 +22,7 @@ func NewUserURLsHandler(svc ShortenerService) *UserURLsHandler {
 }
 
 func (h *UserURLsHandler) Handle(w http.ResponseWriter, r *http.Request) {
-	items, err := h.svc.UserURLs(r.Context())
+	items, err := h.svc.UserURLs(serviceContext(r.Context()))
 	if err != nil {
 		if errors.Is(err, service.ErrUnauthorized) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
