@@ -13,11 +13,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Fa1ry7a1l/url-shortener/internal/handler"
+	"github.com/Fa1ry7a1l/url-shortener/internal/repository"
 )
 
 type fakeSvc struct {
 	shortenFn func(ctx context.Context, original string) (string, error)
 	resolveFn func(ctx context.Context, id string) (string, error)
+	deleteFn  func(ctx context.Context, ids []string) error
 }
 
 func (f fakeSvc) ShortenBatch(ctx context.Context, items []service.BatchRequestItem) ([]service.BatchResponseItem, error) {
@@ -36,6 +38,13 @@ func (f fakeSvc) Resolve(ctx context.Context, id string) (string, error) {
 	return f.resolveFn(ctx, id)
 }
 
+func (f fakeSvc) DeleteURLs(ctx context.Context, ids []string) error {
+	if f.deleteFn != nil {
+		return f.deleteFn(ctx, ids)
+	}
+	return nil
+}
+
 func newTestHandler(t *testing.T, svc handler.ShortenerService) http.Handler {
 	t.Helper()
 
@@ -44,8 +53,9 @@ func newTestHandler(t *testing.T, svc handler.ShortenerService) http.Handler {
 	resolveH := handler.NewResolveHandler(svc)
 	shortenBatchH := handler.NewShortenBatchHandler(svc)
 	userURLsH := handler.NewUserURLsHandler(svc)
+	deleteUserURLsH := handler.NewDeleteUserURLsHandler(svc)
 	pingH := handler.NewPingHandler(noopPinger{})
-	router := handler.NewRouter(shortenH.Handle, shortenJSONH.Handle, shortenBatchH.Handle, resolveH.Handle, userURLsH.Handle, pingH.Handle, nil, nil)
+	router := handler.NewRouter(shortenH.Handle, shortenJSONH.Handle, shortenBatchH.Handle, resolveH.Handle, userURLsH.Handle, deleteUserURLsH.Handle, pingH.Handle, nil, nil)
 
 	return router.Handler()
 }
@@ -256,6 +266,51 @@ func TestAPI_BadRequests_Return400(t *testing.T) {
 			require.Equal(t, http.StatusBadRequest, rr.Code)
 		})
 	}
+}
+
+func TestAPI_DeleteUserURLs_Accepted(t *testing.T) {
+	var got []string
+	svc := fakeSvc{
+		shortenFn: func(_ context.Context, _ string) (string, error) {
+			return "", errors.New("not used")
+		},
+		resolveFn: func(_ context.Context, _ string) (string, error) {
+			return "", errors.New("not used")
+		},
+		deleteFn: func(_ context.Context, ids []string) error {
+			got = append([]string(nil), ids...)
+			return nil
+		},
+	}
+
+	h := newTestHandler(t, svc)
+	req := httptest.NewRequest(http.MethodDelete, "http://example.com/api/user/urls", bytes.NewBufferString(`["6qxTVvsy","RTfd56hn"]`))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusAccepted, rr.Code)
+	require.Equal(t, []string{"6qxTVvsy", "RTfd56hn"}, got)
+}
+
+func TestAPI_Resolve_Deleted_ReturnsGone(t *testing.T) {
+	svc := fakeSvc{
+		shortenFn: func(_ context.Context, _ string) (string, error) {
+			return "", errors.New("not used")
+		},
+		resolveFn: func(_ context.Context, _ string) (string, error) {
+			return "", repository.ErrDeleted
+		},
+	}
+
+	h := newTestHandler(t, svc)
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/deleted-id", nil)
+	rr := httptest.NewRecorder()
+
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusGone, rr.Code)
 }
 
 func TestAPI_ShortenJSON_POSTAPIShorten(t *testing.T) {

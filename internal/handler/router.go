@@ -10,14 +10,15 @@ import (
 )
 
 type Router struct {
-	shorten      http.HandlerFunc
-	shortenJSON  http.HandlerFunc
-	shortenBatch http.HandlerFunc
-	resolve      http.HandlerFunc
-	userURLs     http.HandlerFunc
-	ping         http.HandlerFunc
-	logger       appLogger.Logger
-	authManager  *auth.Manager
+	shorten        http.HandlerFunc
+	shortenJSON    http.HandlerFunc
+	shortenBatch   http.HandlerFunc
+	resolve        http.HandlerFunc
+	userURLs       http.HandlerFunc
+	deleteUserURLs http.HandlerFunc
+	ping           http.HandlerFunc
+	logger         appLogger.Logger
+	authManager    *auth.Manager
 }
 
 func NewRouter(
@@ -26,19 +27,21 @@ func NewRouter(
 	shortenBatch http.HandlerFunc,
 	resolve http.HandlerFunc,
 	userURLs http.HandlerFunc,
+	deleteUserURLs http.HandlerFunc,
 	ping http.HandlerFunc,
 	logger appLogger.Logger,
 	authManager *auth.Manager,
 ) *Router {
 	return &Router{
-		shorten:      shorten,
-		shortenJSON:  shortenJSON,
-		shortenBatch: shortenBatch,
-		resolve:      resolve,
-		userURLs:     userURLs,
-		ping:         ping,
-		logger:       logger,
-		authManager:  authManager,
+		shorten:        shorten,
+		shortenJSON:    shortenJSON,
+		shortenBatch:   shortenBatch,
+		resolve:        resolve,
+		userURLs:       userURLs,
+		deleteUserURLs: deleteUserURLs,
+		ping:           ping,
+		logger:         logger,
+		authManager:    authManager,
 	}
 }
 
@@ -65,6 +68,7 @@ func (rt *Router) Handler() http.Handler {
 	r.Post("/api/shorten", rt.shortenJSON)
 	r.Post("/api/shorten/batch", rt.shortenBatch)
 	r.Get("/api/user/urls", rt.userURLs)
+	r.Delete("/api/user/urls", rt.deleteUserURLs)
 	r.Get("/ping", rt.ping)
 	r.Get("/{id}", rt.resolve)
 

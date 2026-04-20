@@ -24,6 +24,7 @@ func newAuthenticatedTestHandler(t *testing.T) http.Handler {
 	shortenBatchH := handler.NewShortenBatchHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
 	userURLsH := handler.NewUserURLsHandler(svc)
+	deleteUserURLsH := handler.NewDeleteUserURLsHandler(svc)
 	pingH := handler.NewPingHandler(store)
 	authManager := auth.NewManager("test-secret", auth.DefaultTTL)
 
@@ -33,6 +34,7 @@ func newAuthenticatedTestHandler(t *testing.T) http.Handler {
 		shortenBatchH.Handle,
 		resolveH.Handle,
 		userURLsH.Handle,
+		deleteUserURLsH.Handle,
 		pingH.Handle,
 		nil,
 		authManager,

@@ -19,6 +19,7 @@ import (
 type gzipFakeSvc struct {
 	shortenFn func(ctx context.Context, original string) (string, error)
 	resolveFn func(ctx context.Context, id string) (string, error)
+	deleteFn  func(ctx context.Context, ids []string) error
 }
 
 func (f gzipFakeSvc) ShortenBatch(ctx context.Context, items []service.BatchRequestItem) ([]service.BatchResponseItem, error) {
@@ -37,6 +38,13 @@ func (f gzipFakeSvc) Resolve(ctx context.Context, id string) (string, error) {
 	return f.resolveFn(ctx, id)
 }
 
+func (f gzipFakeSvc) DeleteURLs(ctx context.Context, ids []string) error {
+	if f.deleteFn != nil {
+		return f.deleteFn(ctx, ids)
+	}
+	return nil
+}
+
 type noopPinger struct{}
 
 func (noopPinger) Ping(_ context.Context) error { return nil }
@@ -48,6 +56,7 @@ func newGzipTestHandler(t *testing.T, svc handler.ShortenerService) http.Handler
 	resolveH := handler.NewResolveHandler(svc)
 	shortenBatchH := handler.NewShortenBatchHandler(svc)
 	userURLsH := handler.NewUserURLsHandler(svc)
+	deleteUserURLsH := handler.NewDeleteUserURLsHandler(svc)
 	pingH := handler.NewPingHandler(noopPinger{})
 
 	router := handler.NewRouter(
@@ -56,6 +65,7 @@ func newGzipTestHandler(t *testing.T, svc handler.ShortenerService) http.Handler
 		shortenBatchH.Handle,
 		resolveH.Handle,
 		userURLsH.Handle,
+		deleteUserURLsH.Handle,
 		pingH.Handle,
 		nil,
 		nil,

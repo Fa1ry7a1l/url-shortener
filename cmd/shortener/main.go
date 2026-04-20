@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -38,12 +39,16 @@ func main() {
 
 	idgen := service.NewRandomID(cfg.IDLength)
 	svc := service.NewShortener(store, idgen, cfg.BaseURL)
+	workerCtx, stopWorker := context.WithCancel(context.Background())
+	defer stopWorker()
+	go svc.RunDeleteWorker(workerCtx)
 
 	shortenH := handler.NewShortenHandler(svc)
 	shortenJSONH := handler.NewShortenJSONHandler(svc)
 	shortenBatchH := handler.NewShortenBatchHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
 	userURLsH := handler.NewUserURLsHandler(svc)
+	deleteUserURLsH := handler.NewDeleteUserURLsHandler(svc)
 	pingH := handler.NewPingHandler(store)
 	authManager := auth.NewManager(cfg.AuthSecret, auth.DefaultTTL)
 
@@ -53,6 +58,7 @@ func main() {
 		shortenBatchH.Handle,
 		resolveH.Handle,
 		userURLsH.Handle,
+		deleteUserURLsH.Handle,
 		pingH.Handle,
 		log,
 		authManager,

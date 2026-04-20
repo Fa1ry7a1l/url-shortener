@@ -18,6 +18,7 @@ type batchFakeSvc struct {
 	shortenFn      func(ctx context.Context, original string) (string, error)
 	shortenBatchFn func(ctx context.Context, items []service.BatchRequestItem) ([]service.BatchResponseItem, error)
 	resolveFn      func(ctx context.Context, id string) (string, error)
+	deleteFn       func(ctx context.Context, ids []string) error
 }
 
 func (f batchFakeSvc) Shorten(ctx context.Context, original string) (string, error) {
@@ -36,6 +37,13 @@ func (f batchFakeSvc) Resolve(ctx context.Context, id string) (string, error) {
 	return f.resolveFn(ctx, id)
 }
 
+func (f batchFakeSvc) DeleteURLs(ctx context.Context, ids []string) error {
+	if f.deleteFn != nil {
+		return f.deleteFn(ctx, ids)
+	}
+	return nil
+}
+
 func newBatchTestHandler(t *testing.T, svc handler.ShortenerService) http.Handler {
 	t.Helper()
 
@@ -44,6 +52,7 @@ func newBatchTestHandler(t *testing.T, svc handler.ShortenerService) http.Handle
 	shortenBatchH := handler.NewShortenBatchHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
 	userURLsH := handler.NewUserURLsHandler(svc)
+	deleteUserURLsH := handler.NewDeleteUserURLsHandler(svc)
 	pingH := handler.NewPingHandler(noopPinger{})
 
 	router := handler.NewRouter(
@@ -52,6 +61,7 @@ func newBatchTestHandler(t *testing.T, svc handler.ShortenerService) http.Handle
 		shortenBatchH.Handle,
 		resolveH.Handle,
 		userURLsH.Handle,
+		deleteUserURLsH.Handle,
 		pingH.Handle,
 		nil,
 		nil,

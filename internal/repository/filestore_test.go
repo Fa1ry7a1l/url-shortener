@@ -52,3 +52,27 @@ func TestFileStore_GetNotFound(t *testing.T) {
 	_, err = store.Get(context.Background(), "missing")
 	require.ErrorIs(t, err, repository.ErrNotFound)
 }
+
+func TestFileStore_DeleteBatchByUser(t *testing.T) {
+	path := t.TempDir() + "/db.json"
+
+	store, err := repository.NewFileStore(path)
+	require.NoError(t, err)
+
+	require.NoError(t, store.SaveForUser(context.Background(), "id1", "https://one.example", "user-1"))
+	require.NoError(t, store.SaveForUser(context.Background(), "id2", "https://two.example", "user-2"))
+
+	require.NoError(t, store.DeleteBatchByUser(context.Background(), "user-1", []string{"id1", "id2"}))
+
+	_, err = store.Get(context.Background(), "id1")
+	require.ErrorIs(t, err, repository.ErrDeleted)
+
+	got, err := store.Get(context.Background(), "id2")
+	require.NoError(t, err)
+	require.Equal(t, "https://two.example", got)
+
+	restarted, err := repository.NewFileStore(path)
+	require.NoError(t, err)
+	_, err = restarted.Get(context.Background(), "id1")
+	require.ErrorIs(t, err, repository.ErrDeleted)
+}

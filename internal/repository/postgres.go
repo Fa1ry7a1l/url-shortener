@@ -72,8 +72,8 @@ func (p *PostgresStore) Save(ctx context.Context, id string, original string) er
 
 func (p *PostgresStore) SaveForUser(ctx context.Context, id string, original string, userID string) error {
 	const query = `
-INSERT INTO short_urls (id, original_url, user_id)
-VALUES ($1, $2, $3)
+INSERT INTO short_urls (id, original_url, user_id, is_deleted)
+VALUES ($1, $2, $3, FALSE)
 `
 	_, err := p.db.ExecContext(ctx, query, id, original, userID)
 	if err != nil {
@@ -114,12 +114,12 @@ func (p *PostgresStore) SaveBatch(ctx context.Context, items []BatchItem) error 
 
 	for i, item := range items {
 		n := i*3 + 1
-		valueParts = append(valueParts, fmt.Sprintf("($%d, $%d, $%d)", n, n+1, n+2))
+		valueParts = append(valueParts, fmt.Sprintf("($%d, $%d, $%d, FALSE)", n, n+1, n+2))
 		args = append(args, item.ID, item.Original, item.UserID)
 	}
 
 	query := `
-INSERT INTO short_urls (id, original_url, user_id)
+INSERT INTO short_urls (id, original_url, user_id, is_deleted)
 VALUES ` + strings.Join(valueParts, ",")
 
 	_, err = tx.ExecContext(ctx, query, args...)
@@ -147,21 +147,43 @@ VALUES ` + strings.Join(valueParts, ",")
 
 func (p *PostgresStore) Get(ctx context.Context, id string) (string, error) {
 	const query = `
-SELECT original_url
+SELECT original_url, is_deleted
 FROM short_urls
 WHERE id = $1
 `
-	var original string
+	var (
+		original  string
+		isDeleted bool
+	)
 
-	err := p.db.QueryRowContext(ctx, query, id).Scan(&original)
+	err := p.db.QueryRowContext(ctx, query, id).Scan(&original, &isDeleted)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}
 	if err != nil {
 		return "", err
 	}
+	if isDeleted {
+		return "", ErrDeleted
+	}
 
 	return original, nil
+}
+
+func (p *PostgresStore) DeleteBatchByUser(ctx context.Context, userID string, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	const query = `
+UPDATE short_urls
+SET is_deleted = TRUE
+WHERE user_id = $1
+  AND id = ANY($2)
+`
+
+	_, err := p.db.ExecContext(ctx, query, userID, pq.Array(ids))
+	return err
 }
 
 func (p *PostgresStore) Ping(ctx context.Context) error {
@@ -196,6 +218,7 @@ func (p *PostgresStore) GetByUser(ctx context.Context, userID string) ([]UserURL
 SELECT id, original_url
 FROM short_urls
 WHERE user_id = $1
+  AND is_deleted = FALSE
 `
 
 	rows, err := p.db.QueryContext(ctx, query, userID)

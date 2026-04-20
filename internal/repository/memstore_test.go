@@ -38,3 +38,18 @@ func TestMemStore_GetNotFound(t *testing.T) {
 	_, err := st.Get(context.Background(), "missing")
 	require.ErrorIs(t, err, repository.ErrNotFound)
 }
+
+func TestMemStore_DeleteBatchByUser(t *testing.T) {
+	st := repository.NewMemStore()
+	require.NoError(t, st.SaveForUser(context.Background(), "id1", "https://one.example", "user-1"))
+	require.NoError(t, st.SaveForUser(context.Background(), "id2", "https://two.example", "user-2"))
+
+	require.NoError(t, st.DeleteBatchByUser(context.Background(), "user-1", []string{"id1", "id2"}))
+
+	_, err := st.Get(context.Background(), "id1")
+	require.ErrorIs(t, err, repository.ErrDeleted)
+
+	got, err := st.Get(context.Background(), "id2")
+	require.NoError(t, err)
+	require.Equal(t, "https://two.example", got)
+}

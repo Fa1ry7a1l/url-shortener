@@ -15,6 +15,7 @@ type fileRecord struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
 	UserID      string `json:"user_id,omitempty"`
+	IsDeleted   bool   `json:"is_deleted"`
 }
 
 type FileStore struct {
@@ -22,6 +23,7 @@ type FileStore struct {
 	path    string
 	data    map[string]string
 	userIDs map[string]string
+	deleted map[string]bool
 }
 
 func NewFileStore(path string) (*FileStore, error) {
@@ -29,6 +31,7 @@ func NewFileStore(path string) (*FileStore, error) {
 		path:    path,
 		data:    make(map[string]string),
 		userIDs: make(map[string]string),
+		deleted: make(map[string]bool),
 	}
 
 	if err := fs.load(); err != nil {
@@ -58,9 +61,11 @@ func (f *FileStore) SaveForUser(_ context.Context, id string, original string, u
 
 	f.data[id] = original
 	f.userIDs[id] = userID
+	f.deleted[id] = false
 	if err := f.flush(); err != nil {
 		delete(f.data, id)
 		delete(f.userIDs, id)
+		delete(f.deleted, id)
 		return err
 	}
 
@@ -85,12 +90,14 @@ func (f *FileStore) SaveBatch(_ context.Context, items []BatchItem) error {
 	for _, item := range items {
 		f.data[item.ID] = item.Original
 		f.userIDs[item.ID] = item.UserID
+		f.deleted[item.ID] = false
 	}
 
 	if err := f.flush(); err != nil {
 		for _, item := range items {
 			delete(f.data, item.ID)
 			delete(f.userIDs, item.ID)
+			delete(f.deleted, item.ID)
 		}
 		return err
 	}
@@ -119,7 +126,40 @@ func (f *FileStore) Get(_ context.Context, id string) (string, error) {
 	if !ok {
 		return "", ErrNotFound
 	}
+	if f.deleted[id] {
+		return "", ErrDeleted
+	}
 	return v, nil
+}
+
+func (f *FileStore) DeleteBatchByUser(_ context.Context, userID string, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	hasChanges := false
+	for _, id := range ids {
+		if f.userIDs[id] != userID {
+			continue
+		}
+		if _, exists := f.data[id]; !exists {
+			continue
+		}
+		if f.deleted[id] {
+			continue
+		}
+		f.deleted[id] = true
+		hasChanges = true
+	}
+
+	if !hasChanges {
+		return nil
+	}
+
+	return f.flush()
 }
 
 func (f *FileStore) GetByUser(_ context.Context, userID string) ([]UserURL, error) {
@@ -129,6 +169,9 @@ func (f *FileStore) GetByUser(_ context.Context, userID string) ([]UserURL, erro
 	result := make([]UserURL, 0)
 	for id, existingUserID := range f.userIDs {
 		if existingUserID != userID {
+			continue
+		}
+		if f.deleted[id] {
 			continue
 		}
 		result = append(result, UserURL{
@@ -165,6 +208,7 @@ func (f *FileStore) load() error {
 	for _, rec := range records {
 		f.data[rec.ShortURL] = rec.OriginalURL
 		f.userIDs[rec.ShortURL] = rec.UserID
+		f.deleted[rec.ShortURL] = rec.IsDeleted
 	}
 
 	return nil
@@ -179,6 +223,7 @@ func (f *FileStore) flush() error {
 			ShortURL:    shortURL,
 			OriginalURL: originalURL,
 			UserID:      f.userIDs[shortURL],
+			IsDeleted:   f.deleted[shortURL],
 		})
 		i++
 	}
