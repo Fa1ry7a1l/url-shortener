@@ -25,6 +25,10 @@ func (f gzipFakeSvc) ShortenBatch(ctx context.Context, items []service.BatchRequ
 	return nil, nil
 }
 
+func (f gzipFakeSvc) UserURLs(ctx context.Context) ([]service.UserURL, error) {
+	return nil, nil
+}
+
 func (f gzipFakeSvc) Shorten(ctx context.Context, original string) (string, error) {
 	return f.shortenFn(ctx, original)
 }
@@ -43,6 +47,7 @@ func newGzipTestHandler(t *testing.T, svc handler.ShortenerService) http.Handler
 	shortenJSONH := handler.NewShortenJSONHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
 	shortenBatchH := handler.NewShortenBatchHandler(svc)
+	userURLsH := handler.NewUserURLsHandler(svc)
 	pingH := handler.NewPingHandler(noopPinger{})
 
 	router := handler.NewRouter(
@@ -50,7 +55,9 @@ func newGzipTestHandler(t *testing.T, svc handler.ShortenerService) http.Handler
 		shortenJSONH.Handle,
 		shortenBatchH.Handle,
 		resolveH.Handle,
+		userURLsH.Handle,
 		pingH.Handle,
+		nil,
 		nil,
 	)
 

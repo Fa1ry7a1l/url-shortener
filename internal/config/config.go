@@ -12,6 +12,7 @@ type Config struct {
 	IDLength        int
 	FileStoragePath string
 	DatabaseDSN     string
+	AuthSecret      string
 }
 
 const (
@@ -20,6 +21,7 @@ const (
 	defaultIDLength        = 8
 	defaultFileStoragePath = ""
 	defaultDatabaseDSN     = ""
+	defaultAuthSecret      = "url-shortener-secret"
 )
 
 func Parse(args []string) (*Config, error) {
@@ -31,6 +33,7 @@ func Parse(args []string) (*Config, error) {
 	fs.IntVar(&cfg.IDLength, "l", defaultIDLength, "Length of generated short ID")
 	fs.StringVar(&cfg.FileStoragePath, "f", defaultFileStoragePath, "Path to JSON storage file")
 	fs.StringVar(&cfg.DatabaseDSN, "d", defaultDatabaseDSN, "PostgreSQL DSN")
+	fs.StringVar(&cfg.AuthSecret, "s", defaultAuthSecret, "JWT cookie signing secret")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -47,6 +50,9 @@ func Parse(args []string) (*Config, error) {
 	}
 	if v := os.Getenv("DATABASE_DSN"); v != "" {
 		cfg.DatabaseDSN = v
+	}
+	if v := os.Getenv("AUTH_SECRET"); v != "" {
+		cfg.AuthSecret = v
 	}
 
 	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")

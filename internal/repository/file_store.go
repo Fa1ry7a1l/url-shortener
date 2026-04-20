@@ -14,18 +14,21 @@ type fileRecord struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
+	UserID      string `json:"user_id,omitempty"`
 }
 
 type FileStore struct {
-	mu   sync.RWMutex
-	path string
-	data map[string]string
+	mu      sync.RWMutex
+	path    string
+	data    map[string]string
+	userIDs map[string]string
 }
 
 func NewFileStore(path string) (*FileStore, error) {
 	fs := &FileStore{
-		path: path,
-		data: make(map[string]string),
+		path:    path,
+		data:    make(map[string]string),
+		userIDs: make(map[string]string),
 	}
 
 	if err := fs.load(); err != nil {
@@ -35,7 +38,11 @@ func NewFileStore(path string) (*FileStore, error) {
 	return fs, nil
 }
 
-func (f *FileStore) Save(_ context.Context, id string, original string) error {
+func (f *FileStore) Save(ctx context.Context, id string, original string) error {
+	return f.SaveForUser(ctx, id, original, "")
+}
+
+func (f *FileStore) SaveForUser(_ context.Context, id string, original string, userID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -50,8 +57,10 @@ func (f *FileStore) Save(_ context.Context, id string, original string) error {
 	}
 
 	f.data[id] = original
+	f.userIDs[id] = userID
 	if err := f.flush(); err != nil {
 		delete(f.data, id)
+		delete(f.userIDs, id)
 		return err
 	}
 
@@ -75,11 +84,13 @@ func (f *FileStore) SaveBatch(_ context.Context, items []BatchItem) error {
 
 	for _, item := range items {
 		f.data[item.ID] = item.Original
+		f.userIDs[item.ID] = item.UserID
 	}
 
 	if err := f.flush(); err != nil {
 		for _, item := range items {
 			delete(f.data, item.ID)
+			delete(f.userIDs, item.ID)
 		}
 		return err
 	}
@@ -111,6 +122,24 @@ func (f *FileStore) Get(_ context.Context, id string) (string, error) {
 	return v, nil
 }
 
+func (f *FileStore) GetByUser(_ context.Context, userID string) ([]UserURL, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	result := make([]UserURL, 0)
+	for id, existingUserID := range f.userIDs {
+		if existingUserID != userID {
+			continue
+		}
+		result = append(result, UserURL{
+			ID:       id,
+			Original: f.data[id],
+		})
+	}
+
+	return result, nil
+}
+
 func (f *FileStore) Ping(_ context.Context) error {
 	return nil
 }
@@ -135,6 +164,7 @@ func (f *FileStore) load() error {
 
 	for _, rec := range records {
 		f.data[rec.ShortURL] = rec.OriginalURL
+		f.userIDs[rec.ShortURL] = rec.UserID
 	}
 
 	return nil
@@ -148,6 +178,7 @@ func (f *FileStore) flush() error {
 			UUID:        strconv.Itoa(i),
 			ShortURL:    shortURL,
 			OriginalURL: originalURL,
+			UserID:      f.userIDs[shortURL],
 		})
 		i++
 	}

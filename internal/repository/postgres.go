@@ -67,11 +67,15 @@ func runMigrations(db *sql.DB) error {
 }
 
 func (p *PostgresStore) Save(ctx context.Context, id string, original string) error {
+	return p.SaveForUser(ctx, id, original, "")
+}
+
+func (p *PostgresStore) SaveForUser(ctx context.Context, id string, original string, userID string) error {
 	const query = `
-INSERT INTO short_urls (id, original_url)
-VALUES ($1, $2)
+INSERT INTO short_urls (id, original_url, user_id)
+VALUES ($1, $2, $3)
 `
-	_, err := p.db.ExecContext(ctx, query, id, original)
+	_, err := p.db.ExecContext(ctx, query, id, original, userID)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && string(pqErr.Code) == pgerrcode.UniqueViolation {
@@ -109,13 +113,13 @@ func (p *PostgresStore) SaveBatch(ctx context.Context, items []BatchItem) error 
 	)
 
 	for i, item := range items {
-		n := i*2 + 1
-		valueParts = append(valueParts, fmt.Sprintf("($%d, $%d)", n, n+1))
-		args = append(args, item.ID, item.Original)
+		n := i*3 + 1
+		valueParts = append(valueParts, fmt.Sprintf("($%d, $%d, $%d)", n, n+1, n+2))
+		args = append(args, item.ID, item.Original, item.UserID)
 	}
 
 	query := `
-INSERT INTO short_urls (id, original_url)
+INSERT INTO short_urls (id, original_url, user_id)
 VALUES ` + strings.Join(valueParts, ",")
 
 	_, err = tx.ExecContext(ctx, query, args...)
@@ -185,4 +189,32 @@ WHERE original_url = $1
 	}
 
 	return id, nil
+}
+
+func (p *PostgresStore) GetByUser(ctx context.Context, userID string) ([]UserURL, error) {
+	const query = `
+SELECT id, original_url
+FROM short_urls
+WHERE user_id = $1
+`
+
+	rows, err := p.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]UserURL, 0)
+	for rows.Next() {
+		var item UserURL
+		if err := rows.Scan(&item.ID, &item.Original); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }

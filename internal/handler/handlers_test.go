@@ -24,6 +24,10 @@ func (f fakeSvc) ShortenBatch(ctx context.Context, items []service.BatchRequestI
 	return nil, nil
 }
 
+func (f fakeSvc) UserURLs(ctx context.Context) ([]service.UserURL, error) {
+	return nil, nil
+}
+
 func (f fakeSvc) Shorten(ctx context.Context, original string) (string, error) {
 	return f.shortenFn(ctx, original)
 }
@@ -39,8 +43,9 @@ func newTestHandler(t *testing.T, svc handler.ShortenerService) http.Handler {
 	shortenJSONH := handler.NewShortenJSONHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
 	shortenBatchH := handler.NewShortenBatchHandler(svc)
+	userURLsH := handler.NewUserURLsHandler(svc)
 	pingH := handler.NewPingHandler(noopPinger{})
-	router := handler.NewRouter(shortenH.Handle, shortenJSONH.Handle, shortenBatchH.Handle, resolveH.Handle, pingH.Handle, nil)
+	router := handler.NewRouter(shortenH.Handle, shortenJSONH.Handle, shortenBatchH.Handle, resolveH.Handle, userURLsH.Handle, pingH.Handle, nil, nil)
 
 	return router.Handler()
 }

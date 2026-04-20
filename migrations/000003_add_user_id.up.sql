@@ -1,0 +1,2 @@
+ALTER TABLE short_urls
+    ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT '';

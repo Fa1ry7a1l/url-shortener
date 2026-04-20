@@ -28,6 +28,10 @@ func (f batchFakeSvc) ShortenBatch(ctx context.Context, items []service.BatchReq
 	return f.shortenBatchFn(ctx, items)
 }
 
+func (f batchFakeSvc) UserURLs(ctx context.Context) ([]service.UserURL, error) {
+	return nil, nil
+}
+
 func (f batchFakeSvc) Resolve(ctx context.Context, id string) (string, error) {
 	return f.resolveFn(ctx, id)
 }
@@ -39,6 +43,7 @@ func newBatchTestHandler(t *testing.T, svc handler.ShortenerService) http.Handle
 	shortenJSONH := handler.NewShortenJSONHandler(svc)
 	shortenBatchH := handler.NewShortenBatchHandler(svc)
 	resolveH := handler.NewResolveHandler(svc)
+	userURLsH := handler.NewUserURLsHandler(svc)
 	pingH := handler.NewPingHandler(noopPinger{})
 
 	router := handler.NewRouter(
@@ -46,7 +51,9 @@ func newBatchTestHandler(t *testing.T, svc handler.ShortenerService) http.Handle
 		shortenJSONH.Handle,
 		shortenBatchH.Handle,
 		resolveH.Handle,
+		userURLsH.Handle,
 		pingH.Handle,
+		nil,
 		nil,
 	)
 
