@@ -17,14 +17,17 @@ type shortenBatchResponseItem struct {
 	ShortURL      string `json:"short_url"`
 }
 
+// ShortenBatchHandler handles batch shortening requests on POST /api/shorten/batch.
 type ShortenBatchHandler struct {
 	svc ShortenerService
 }
 
+// NewShortenBatchHandler creates a batch shortening handler.
 func NewShortenBatchHandler(svc ShortenerService) *ShortenBatchHandler {
 	return &ShortenBatchHandler{svc: svc}
 }
 
+// Handle decodes a batch JSON request and writes short URLs with correlation IDs.
 func (h *ShortenBatchHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	var req []shortenBatchRequestItem
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

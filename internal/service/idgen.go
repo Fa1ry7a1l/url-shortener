@@ -6,7 +6,9 @@ import (
 	"math"
 )
 
+// IDGenerator creates URL-safe identifiers for short links.
 type IDGenerator interface {
+	// NewID returns a new identifier.
 	NewID() (string, error)
 }
 
@@ -15,7 +17,7 @@ type RandomID struct {
 	length int // длина в символах (например 8)
 }
 
-// Оставляем имя NewRandomID
+// NewRandomID creates an ID generator that returns strings of the requested length.
 func NewRandomID(length int) *RandomID {
 	if length <= 0 {
 		length = 8
@@ -23,6 +25,7 @@ func NewRandomID(length int) *RandomID {
 	return &RandomID{length: length}
 }
 
+// NewID returns a cryptographically random URL-safe identifier.
 func (g *RandomID) NewID() (string, error) {
 	// base64: 3 bytes -> 4 chars
 	// нужно минимум ceil(length * 3 / 4) байт

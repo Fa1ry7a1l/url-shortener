@@ -32,6 +32,7 @@ func (lw *loggingResponseWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// RequestLogger returns middleware that logs request method, URI, status, size, and duration.
 func RequestLogger(log Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

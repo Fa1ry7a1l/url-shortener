@@ -8,11 +8,13 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// ResolveHandler handles redirects from a short ID to the original URL.
 type ResolveHandler struct {
 	svc     ShortenerService
 	auditor AuditPublisher
 }
 
+// NewResolveHandler creates a redirect handler.
 func NewResolveHandler(svc ShortenerService, auditors ...AuditPublisher) *ResolveHandler {
 	h := &ResolveHandler{svc: svc}
 	if len(auditors) > 0 {
@@ -21,6 +23,7 @@ func NewResolveHandler(svc ShortenerService, auditors ...AuditPublisher) *Resolv
 	return h
 }
 
+// Handle resolves the {id} route parameter and responds with a temporary redirect.
 func (h *ResolveHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {

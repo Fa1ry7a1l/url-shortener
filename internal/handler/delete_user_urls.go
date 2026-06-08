@@ -9,14 +9,17 @@ import (
 	"github.com/Fa1ry7a1l/url-shortener/internal/service"
 )
 
+// DeleteUserURLsHandler handles asynchronous deletion of user-owned short URLs.
 type DeleteUserURLsHandler struct {
 	svc ShortenerService
 }
 
+// NewDeleteUserURLsHandler creates a user URL deletion handler.
 func NewDeleteUserURLsHandler(svc ShortenerService) *DeleteUserURLsHandler {
 	return &DeleteUserURLsHandler{svc: svc}
 }
 
+// Handle accepts a JSON array of short IDs and schedules them for deletion.
 func (h *DeleteUserURLsHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	if ct := r.Header.Get("Content-Type"); ct != "" && !strings.HasPrefix(ct, "application/json") {
 		http.Error(w, "bad request", http.StatusBadRequest)
