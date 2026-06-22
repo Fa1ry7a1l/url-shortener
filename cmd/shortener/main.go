@@ -18,7 +18,15 @@ import (
 	"github.com/Fa1ry7a1l/url-shortener/internal/service"
 )
 
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
 func main() {
+	printBuildInfo()
+
 	cfg, err := config.Parse(os.Args[1:])
 	if err != nil {
 		panic(err)
@@ -97,6 +105,23 @@ func main() {
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		panic(err)
 	}
+}
+
+func printBuildInfo() {
+	fmt.Printf(
+		"Build version: %s\nBuild date: %s\nBuild commit: %s\n",
+		valueOrNA(buildVersion),
+		valueOrNA(buildDate),
+		valueOrNA(buildCommit),
+	)
+}
+
+func valueOrNA(value string) string {
+	if value == "" {
+		return "N/A"
+	}
+
+	return value
 }
 
 func initStorage(cfg *config.Config) (repository.Store, func(), error) {
