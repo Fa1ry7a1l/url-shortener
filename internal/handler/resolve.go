@@ -9,11 +9,16 @@ import (
 )
 
 type ResolveHandler struct {
-	svc ShortenerService
+	svc     ShortenerService
+	auditor AuditPublisher
 }
 
-func NewResolveHandler(svc ShortenerService) *ResolveHandler {
-	return &ResolveHandler{svc: svc}
+func NewResolveHandler(svc ShortenerService, auditors ...AuditPublisher) *ResolveHandler {
+	h := &ResolveHandler{svc: svc}
+	if len(auditors) > 0 {
+		h.auditor = auditors[0]
+	}
+	return h
 }
 
 func (h *ResolveHandler) Handle(w http.ResponseWriter, r *http.Request) {
@@ -39,4 +44,5 @@ func (h *ResolveHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Location", original)
 	w.WriteHeader(http.StatusTemporaryRedirect) // 307
+	publishFollowAudit(r.Context(), h.auditor, original)
 }

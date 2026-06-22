@@ -14,3 +14,8 @@ func serviceContext(ctx context.Context) context.Context {
 	}
 	return service.ContextWithUserID(ctx, userID)
 }
+
+func userIDFromContext(ctx context.Context) string {
+	userID, _ := auth.UserIDFromContext(ctx)
+	return userID
+}

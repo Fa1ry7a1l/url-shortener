@@ -10,11 +10,16 @@ import (
 )
 
 type ShortenHandler struct {
-	svc ShortenerService
+	svc     ShortenerService
+	auditor AuditPublisher
 }
 
-func NewShortenHandler(svc ShortenerService) *ShortenHandler {
-	return &ShortenHandler{svc: svc}
+func NewShortenHandler(svc ShortenerService, auditors ...AuditPublisher) *ShortenHandler {
+	h := &ShortenHandler{svc: svc}
+	if len(auditors) > 0 {
+		h.auditor = auditors[0]
+	}
+	return h
 }
 
 func (h *ShortenHandler) Handle(w http.ResponseWriter, r *http.Request) {
@@ -46,6 +51,7 @@ func (h *ShortenHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusCreated)
 	_, _ = io.WriteString(w, short)
+	publishShortenAudit(r.Context(), h.auditor, body)
 }
 
 func readBodyLimit(r *http.Request, maxBytes int64) (string, error) {

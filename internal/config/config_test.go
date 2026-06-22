@@ -11,6 +11,8 @@ import (
 func TestParse_Defaults(t *testing.T) {
 	t.Setenv("SERVER_ADDRESS", "")
 	t.Setenv("BASE_URL", "")
+	t.Setenv("AUDIT_FILE", "")
+	t.Setenv("AUDIT_URL", "")
 
 	cfg, err := config.Parse(nil)
 	require.NoError(t, err)
@@ -18,6 +20,8 @@ func TestParse_Defaults(t *testing.T) {
 	require.Equal(t, "localhost:8080", cfg.Addr)
 	require.Equal(t, "http://localhost:8080", cfg.BaseURL)
 	require.Equal(t, 8, cfg.IDLength)
+	require.Equal(t, "", cfg.AuditFile)
+	require.Equal(t, "", cfg.AuditURL)
 }
 
 func TestParse_Flags(t *testing.T) {
@@ -117,4 +121,32 @@ func TestParse_DatabaseDSN_EnvOverridesFlag(t *testing.T) {
 	cfg, err := config.Parse([]string{"-d", "postgres://flag:flag@localhost:5432/flagdb?sslmode=disable"})
 	require.NoError(t, err)
 	require.Equal(t, "postgres://env:env@localhost:5432/envdb?sslmode=disable", cfg.DatabaseDSN)
+}
+
+func TestParse_AuditFlags(t *testing.T) {
+	t.Setenv("AUDIT_FILE", "")
+	t.Setenv("AUDIT_URL", "")
+
+	cfg, err := config.Parse([]string{
+		"--audit-file", "/tmp/audit.log",
+		"--audit-url", "http://localhost:9090/audit",
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, "/tmp/audit.log", cfg.AuditFile)
+	require.Equal(t, "http://localhost:9090/audit", cfg.AuditURL)
+}
+
+func TestParse_AuditEnvOverridesFlags(t *testing.T) {
+	t.Setenv("AUDIT_FILE", "/env/audit.log")
+	t.Setenv("AUDIT_URL", "http://localhost:9091/audit")
+
+	cfg, err := config.Parse([]string{
+		"--audit-file", "/flag/audit.log",
+		"--audit-url", "http://localhost:9090/audit",
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, "/env/audit.log", cfg.AuditFile)
+	require.Equal(t, "http://localhost:9091/audit", cfg.AuditURL)
 }

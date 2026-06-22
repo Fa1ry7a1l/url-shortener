@@ -17,11 +17,16 @@ type shortenJSONResponse struct {
 }
 
 type ShortenJSONHandler struct {
-	svc ShortenerService
+	svc     ShortenerService
+	auditor AuditPublisher
 }
 
-func NewShortenJSONHandler(svc ShortenerService) *ShortenJSONHandler {
-	return &ShortenJSONHandler{svc: svc}
+func NewShortenJSONHandler(svc ShortenerService, auditors ...AuditPublisher) *ShortenJSONHandler {
+	h := &ShortenJSONHandler{svc: svc}
+	if len(auditors) > 0 {
+		h.auditor = auditors[0]
+	}
+	return h
 }
 
 func (h *ShortenJSONHandler) Handle(w http.ResponseWriter, r *http.Request) {
@@ -55,4 +60,5 @@ func (h *ShortenJSONHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		Result: short,
 	}
 	_ = json.NewEncoder(w).Encode(resp)
+	publishShortenAudit(r.Context(), h.auditor, req.URL)
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/Fa1ry7a1l/url-shortener/internal/audit"
 	"github.com/Fa1ry7a1l/url-shortener/internal/auth"
 	"github.com/Fa1ry7a1l/url-shortener/internal/config"
 	"github.com/Fa1ry7a1l/url-shortener/internal/handler"
@@ -43,10 +44,11 @@ func main() {
 	defer stopWorker()
 	go svc.RunDeleteWorker(workerCtx)
 
-	shortenH := handler.NewShortenHandler(svc)
-	shortenJSONH := handler.NewShortenJSONHandler(svc)
+	auditor := initAuditor(cfg)
+	shortenH := handler.NewShortenHandler(svc, auditor)
+	shortenJSONH := handler.NewShortenJSONHandler(svc, auditor)
 	shortenBatchH := handler.NewShortenBatchHandler(svc)
-	resolveH := handler.NewResolveHandler(svc)
+	resolveH := handler.NewResolveHandler(svc, auditor)
 	userURLsH := handler.NewUserURLsHandler(svc)
 	deleteUserURLsH := handler.NewDeleteUserURLsHandler(svc)
 	pingH := handler.NewPingHandler(store)
@@ -101,4 +103,16 @@ func initStorage(cfg *config.Config) (repository.Store, func(), error) {
 	}
 	ms := repository.NewMemStore()
 	return ms, func() {}, nil
+}
+
+func initAuditor(cfg *config.Config) *audit.Subject {
+	auditor := audit.NewSubject()
+	if cfg.AuditFile != "" {
+		auditor.Attach(audit.NewFileObserver(cfg.AuditFile))
+	}
+	if cfg.AuditURL != "" {
+		auditor.Attach(audit.NewHTTPObserver(cfg.AuditURL, nil))
+	}
+
+	return auditor
 }

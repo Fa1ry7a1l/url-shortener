@@ -13,6 +13,8 @@ type Config struct {
 	FileStoragePath string
 	DatabaseDSN     string
 	AuthSecret      string
+	AuditFile       string
+	AuditURL        string
 }
 
 const (
@@ -22,6 +24,8 @@ const (
 	defaultFileStoragePath = ""
 	defaultDatabaseDSN     = ""
 	defaultAuthSecret      = "url-shortener-secret"
+	defaultAuditFile       = ""
+	defaultAuditURL        = ""
 )
 
 func Parse(args []string) (*Config, error) {
@@ -34,6 +38,8 @@ func Parse(args []string) (*Config, error) {
 	fs.StringVar(&cfg.FileStoragePath, "f", defaultFileStoragePath, "Path to JSON storage file")
 	fs.StringVar(&cfg.DatabaseDSN, "d", defaultDatabaseDSN, "PostgreSQL DSN")
 	fs.StringVar(&cfg.AuthSecret, "s", defaultAuthSecret, "JWT cookie signing secret")
+	fs.StringVar(&cfg.AuditFile, "audit-file", defaultAuditFile, "Path to audit log file")
+	fs.StringVar(&cfg.AuditURL, "audit-url", defaultAuditURL, "Remote audit receiver URL")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -54,6 +60,12 @@ func Parse(args []string) (*Config, error) {
 	if v := os.Getenv("AUTH_SECRET"); v != "" {
 		cfg.AuthSecret = v
 	}
+	if v := os.Getenv("AUDIT_FILE"); v != "" {
+		cfg.AuditFile = v
+	}
+	if v := os.Getenv("AUDIT_URL"); v != "" {
+		cfg.AuditURL = v
+	}
 
 	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
 
@@ -62,6 +74,13 @@ func Parse(args []string) (*Config, error) {
 	}
 	if cfg.FileStoragePath == "" { //останется для сходства с остальными параметрами
 		cfg.FileStoragePath = defaultFileStoragePath
+	}
+
+	if cfg.AuditFile == "" {
+		cfg.AuditFile = defaultAuditFile
+	}
+	if cfg.AuditURL == "" {
+		cfg.AuditURL = defaultAuditURL
 	}
 
 	return cfg, nil
