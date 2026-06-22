@@ -70,11 +70,28 @@ func main() {
 		Handler:           router.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+	pprofSrv := &http.Server{
+		Addr:              cfg.PprofAddr,
+		Handler:           handler.NewPprofHandler(),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 
 	ln, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
 		panic(err)
 	}
+	pprofLn, err := net.Listen("tcp", pprofSrv.Addr)
+	if err != nil {
+		_ = ln.Close()
+		panic(err)
+	}
+
+	go func() {
+		fmt.Printf("pprof listening on http://%s/debug/pprof/\n", pprofSrv.Addr)
+		if serveErr := pprofSrv.Serve(pprofLn); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			panic(serveErr)
+		}
+	}()
 
 	fmt.Printf("listening on http://%s\n", srv.Addr)
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
