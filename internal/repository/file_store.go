@@ -23,7 +23,7 @@ type FileStore struct {
 	path    string
 	data    map[string]string
 	userIDs map[string]string
-	deleted map[string]bool
+	deleted map[string]struct{}
 }
 
 func NewFileStore(path string) (*FileStore, error) {
@@ -31,7 +31,7 @@ func NewFileStore(path string) (*FileStore, error) {
 		path:    path,
 		data:    make(map[string]string),
 		userIDs: make(map[string]string),
-		deleted: make(map[string]bool),
+		deleted: make(map[string]struct{}),
 	}
 
 	if err := fs.load(); err != nil {
@@ -61,7 +61,6 @@ func (f *FileStore) SaveForUser(_ context.Context, id string, original string, u
 
 	f.data[id] = original
 	f.userIDs[id] = userID
-	f.deleted[id] = false
 	if err := f.flush(); err != nil {
 		delete(f.data, id)
 		delete(f.userIDs, id)
@@ -90,7 +89,6 @@ func (f *FileStore) SaveBatch(_ context.Context, items []BatchItem) error {
 	for _, item := range items {
 		f.data[item.ID] = item.Original
 		f.userIDs[item.ID] = item.UserID
-		f.deleted[item.ID] = false
 	}
 
 	if err := f.flush(); err != nil {
@@ -126,7 +124,7 @@ func (f *FileStore) Get(_ context.Context, id string) (string, error) {
 	if !ok {
 		return "", ErrNotFound
 	}
-	if f.deleted[id] {
+	if _, deleted := f.deleted[id]; deleted {
 		return "", ErrDeleted
 	}
 	return v, nil
@@ -148,10 +146,10 @@ func (f *FileStore) DeleteBatchByUser(_ context.Context, userID string, ids []st
 		if _, exists := f.data[id]; !exists {
 			continue
 		}
-		if f.deleted[id] {
+		if _, deleted := f.deleted[id]; deleted {
 			continue
 		}
-		f.deleted[id] = true
+		f.deleted[id] = struct{}{}
 		hasChanges = true
 	}
 
@@ -166,12 +164,26 @@ func (f *FileStore) GetByUser(_ context.Context, userID string) ([]UserURL, erro
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
-	result := make([]UserURL, 0)
+	count := 0
 	for id, existingUserID := range f.userIDs {
 		if existingUserID != userID {
 			continue
 		}
-		if f.deleted[id] {
+		if _, deleted := f.deleted[id]; deleted {
+			continue
+		}
+		count++
+	}
+	if count == 0 {
+		return nil, nil
+	}
+
+	result := make([]UserURL, 0, count)
+	for id, existingUserID := range f.userIDs {
+		if existingUserID != userID {
+			continue
+		}
+		if _, deleted := f.deleted[id]; deleted {
 			continue
 		}
 		result = append(result, UserURL{
@@ -208,7 +220,9 @@ func (f *FileStore) load() error {
 	for _, rec := range records {
 		f.data[rec.ShortURL] = rec.OriginalURL
 		f.userIDs[rec.ShortURL] = rec.UserID
-		f.deleted[rec.ShortURL] = rec.IsDeleted
+		if rec.IsDeleted {
+			f.deleted[rec.ShortURL] = struct{}{}
+		}
 	}
 
 	return nil
@@ -218,12 +232,13 @@ func (f *FileStore) flush() error {
 	records := make([]fileRecord, 0, len(f.data))
 	i := 1
 	for shortURL, originalURL := range f.data {
+		_, deleted := f.deleted[shortURL]
 		records = append(records, fileRecord{
 			UUID:        strconv.Itoa(i),
 			ShortURL:    shortURL,
 			OriginalURL: originalURL,
 			UserID:      f.userIDs[shortURL],
-			IsDeleted:   f.deleted[shortURL],
+			IsDeleted:   deleted,
 		})
 		i++
 	}
