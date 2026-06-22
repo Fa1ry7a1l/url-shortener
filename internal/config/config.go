@@ -10,6 +10,8 @@ import (
 type Config struct {
 	// Addr is the HTTP server listen address.
 	Addr string
+	// PprofAddr is the diagnostics server listen address.
+	PprofAddr string
 	// BaseURL is the public base URL used to build short links.
 	BaseURL string
 	// IDLength is the length of generated short IDs.
@@ -28,6 +30,7 @@ type Config struct {
 
 const (
 	defaultAddr            = "localhost:8080"
+	defaultPprofAddr       = "localhost:6060"
 	defaultBaseURL         = "http://localhost:8080"
 	defaultIDLength        = 8
 	defaultFileStoragePath = ""
@@ -43,6 +46,7 @@ func Parse(args []string) (*Config, error) {
 
 	fs := flag.NewFlagSet("shortener", flag.ContinueOnError)
 	fs.StringVar(&cfg.Addr, "a", defaultAddr, "HTTP server address")
+	fs.StringVar(&cfg.PprofAddr, "pprof-address", defaultPprofAddr, "pprof diagnostics server address")
 	fs.StringVar(&cfg.BaseURL, "b", defaultBaseURL, "Base URL for short links")
 	fs.IntVar(&cfg.IDLength, "l", defaultIDLength, "Length of generated short ID")
 	fs.StringVar(&cfg.FileStoragePath, "f", defaultFileStoragePath, "Path to JSON storage file")
@@ -57,6 +61,9 @@ func Parse(args []string) (*Config, error) {
 
 	if v := os.Getenv("SERVER_ADDRESS"); v != "" {
 		cfg.Addr = v
+	}
+	if v := os.Getenv("PPROF_ADDRESS"); v != "" {
+		cfg.PprofAddr = v
 	}
 	if v := os.Getenv("BASE_URL"); v != "" {
 		cfg.BaseURL = v

@@ -2,7 +2,6 @@ package handler
 
 import (
 	"net/http"
-	pprof "net/http/pprof"
 
 	"github.com/Fa1ry7a1l/url-shortener/internal/auth"
 	"github.com/go-chi/chi/v5"
@@ -48,7 +47,7 @@ func NewRouter(
 	}
 }
 
-// Handler builds the HTTP handler tree with API routes, gzip, auth, logging, and pprof routes.
+// Handler builds the public HTTP handler tree with API routes, gzip, auth, and logging.
 func (rt *Router) Handler() http.Handler {
 	r := chi.NewRouter()
 
@@ -74,13 +73,6 @@ func (rt *Router) Handler() http.Handler {
 	r.Get("/api/user/urls", rt.userURLs)
 	r.Delete("/api/user/urls", rt.deleteUserURLs)
 	r.Get("/ping", rt.ping)
-	r.Get("/debug/pprof/", pprof.Index)
-	r.Get("/debug/pprof/cmdline", pprof.Cmdline)
-	r.Get("/debug/pprof/profile", pprof.Profile)
-	r.Get("/debug/pprof/symbol", pprof.Symbol)
-	r.Post("/debug/pprof/symbol", pprof.Symbol)
-	r.Get("/debug/pprof/trace", pprof.Trace)
-	r.Get("/debug/pprof/{profile}", pprof.Index)
 	r.Get("/{id}", rt.resolve)
 
 	return r

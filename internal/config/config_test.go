@@ -10,6 +10,7 @@ import (
 
 func TestParse_Defaults(t *testing.T) {
 	t.Setenv("SERVER_ADDRESS", "")
+	t.Setenv("PPROF_ADDRESS", "")
 	t.Setenv("BASE_URL", "")
 	t.Setenv("AUDIT_FILE", "")
 	t.Setenv("AUDIT_URL", "")
@@ -18,6 +19,7 @@ func TestParse_Defaults(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, "localhost:8080", cfg.Addr)
+	require.Equal(t, "localhost:6060", cfg.PprofAddr)
 	require.Equal(t, "http://localhost:8080", cfg.BaseURL)
 	require.Equal(t, 8, cfg.IDLength)
 	require.Equal(t, "", cfg.AuditFile)
@@ -26,32 +28,38 @@ func TestParse_Defaults(t *testing.T) {
 
 func TestParse_Flags(t *testing.T) {
 	t.Setenv("SERVER_ADDRESS", "")
+	t.Setenv("PPROF_ADDRESS", "")
 	t.Setenv("BASE_URL", "")
 
 	cfg, err := config.Parse([]string{
 		"-a", "localhost:9999",
+		"--pprof-address", "localhost:6061",
 		"-b", "http://localhost:1111/",
 		"-l", "12",
 	})
 	require.NoError(t, err)
 
 	require.Equal(t, "localhost:9999", cfg.Addr)
+	require.Equal(t, "localhost:6061", cfg.PprofAddr)
 	require.Equal(t, "http://localhost:1111", cfg.BaseURL)
 	require.Equal(t, 12, cfg.IDLength)
 }
 
 func TestParse_EnvOverridesFlags(t *testing.T) {
 	t.Setenv("SERVER_ADDRESS", "localhost:7777")
+	t.Setenv("PPROF_ADDRESS", "localhost:6062")
 	t.Setenv("BASE_URL", "http://localhost:7777/")
 
 	cfg, err := config.Parse([]string{
 		"-a", "localhost:9999",
+		"--pprof-address", "localhost:6061",
 		"-b", "http://localhost:1111",
 		"-l", "12",
 	})
 	require.NoError(t, err)
 
 	require.Equal(t, "localhost:7777", cfg.Addr)
+	require.Equal(t, "localhost:6062", cfg.PprofAddr)
 	require.Equal(t, "http://localhost:7777", cfg.BaseURL)
 	require.Equal(t, 12, cfg.IDLength)
 }
