@@ -10,6 +10,7 @@ import (
 	appLogger "github.com/Fa1ry7a1l/url-shortener/internal/logger"
 )
 
+// Router wires all HTTP endpoints and middleware for the shortener API.
 type Router struct {
 	shorten        http.HandlerFunc
 	shortenJSON    http.HandlerFunc
@@ -22,6 +23,7 @@ type Router struct {
 	authManager    *auth.Manager
 }
 
+// NewRouter creates a Router from endpoint handlers and optional middleware dependencies.
 func NewRouter(
 	shorten http.HandlerFunc,
 	shortenJSON http.HandlerFunc,
@@ -46,6 +48,7 @@ func NewRouter(
 	}
 }
 
+// Handler builds the HTTP handler tree with API routes, gzip, auth, logging, and pprof routes.
 func (rt *Router) Handler() http.Handler {
 	r := chi.NewRouter()
 

@@ -6,30 +6,50 @@ import (
 )
 
 var (
-	ErrNotFound         = errors.New("not found")
-	ErrDeleted          = errors.New("deleted")
-	ErrIDExists         = errors.New("id already exists")
+	// ErrNotFound is returned when a short ID does not exist.
+	ErrNotFound = errors.New("not found")
+	// ErrDeleted is returned when a short ID was deleted by its owner.
+	ErrDeleted = errors.New("deleted")
+	// ErrIDExists is returned when a generated short ID already exists.
+	ErrIDExists = errors.New("id already exists")
+	// ErrOriginalURLExist is returned when the original URL is already stored.
 	ErrOriginalURLExist = errors.New("original url already exists")
 )
 
+// BatchItem describes one record saved by Store.SaveBatch.
 type BatchItem struct {
-	ID       string
+	// ID is the short URL identifier.
+	ID string
+	// Original is the original URL.
 	Original string
-	UserID   string
+	// UserID owns the short URL.
+	UserID string
 }
 
+// UserURL describes a stored URL returned for a specific user.
 type UserURL struct {
-	ID       string
+	// ID is the short URL identifier.
+	ID string
+	// Original is the original URL.
 	Original string
 }
 
+// Store defines persistence operations required by the shortener service.
 type Store interface {
+	// Save stores an ID and original URL without binding it to a user.
 	Save(ctx context.Context, id string, original string) error
+	// SaveForUser stores an ID and original URL for a user.
 	SaveForUser(ctx context.Context, id string, original string, userID string) error
+	// SaveBatch stores multiple URLs atomically when the implementation supports it.
 	SaveBatch(ctx context.Context, items []BatchItem) error
+	// DeleteBatchByUser marks user-owned IDs as deleted.
 	DeleteBatchByUser(ctx context.Context, userID string, ids []string) error
+	// Get returns the original URL by short ID.
 	Get(ctx context.Context, id string) (string, error)
+	// GetByOriginal returns the short ID previously stored for an original URL.
 	GetByOriginal(ctx context.Context, original string) (string, error)
+	// GetByUser returns non-deleted URLs created by a user.
 	GetByUser(ctx context.Context, userID string) ([]UserURL, error)
+	// Ping checks whether the storage backend is available.
 	Ping(ctx context.Context) error
 }

@@ -13,14 +13,17 @@ type userURLResponseItem struct {
 	OriginalURL string `json:"original_url"`
 }
 
+// UserURLsHandler handles requests for URLs created by the authenticated user.
 type UserURLsHandler struct {
 	svc ShortenerService
 }
 
+// NewUserURLsHandler creates a user URL listing handler.
 func NewUserURLsHandler(svc ShortenerService) *UserURLsHandler {
 	return &UserURLsHandler{svc: svc}
 }
 
+// Handle writes the authenticated user's URLs or 204 when the list is empty.
 func (h *UserURLsHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	items, err := h.svc.UserURLs(serviceContext(r.Context()))
 	if err != nil {

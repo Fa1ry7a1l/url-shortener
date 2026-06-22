@@ -5,6 +5,7 @@ import (
 	"sync"
 )
 
+// MemStore keeps short URLs in memory and is safe for concurrent use.
 type MemStore struct {
 	mu      sync.RWMutex
 	data    map[string]string
@@ -12,6 +13,7 @@ type MemStore struct {
 	deleted map[string]struct{}
 }
 
+// NewMemStore creates an empty in-memory store.
 func NewMemStore() *MemStore {
 	return &MemStore{
 		data:    make(map[string]string),
@@ -20,10 +22,12 @@ func NewMemStore() *MemStore {
 	}
 }
 
+// Save stores an ID and original URL without a user binding.
 func (m *MemStore) Save(ctx context.Context, id string, original string) error {
 	return m.SaveForUser(ctx, id, original, "")
 }
 
+// SaveForUser stores an ID and original URL for a user.
 func (m *MemStore) SaveForUser(_ context.Context, id string, original string, userID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -43,6 +47,7 @@ func (m *MemStore) SaveForUser(_ context.Context, id string, original string, us
 	return nil
 }
 
+// SaveBatch stores multiple URLs in memory.
 func (m *MemStore) SaveBatch(_ context.Context, items []BatchItem) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -66,6 +71,7 @@ func (m *MemStore) SaveBatch(_ context.Context, items []BatchItem) error {
 	return nil
 }
 
+// Get returns the original URL for id.
 func (m *MemStore) Get(_ context.Context, id string) (string, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -81,6 +87,7 @@ func (m *MemStore) Get(_ context.Context, id string) (string, error) {
 	return original, nil
 }
 
+// DeleteBatchByUser marks existing user-owned IDs as deleted.
 func (m *MemStore) DeleteBatchByUser(_ context.Context, userID string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
@@ -102,6 +109,7 @@ func (m *MemStore) DeleteBatchByUser(_ context.Context, userID string, ids []str
 	return nil
 }
 
+// GetByOriginal returns the ID for an already stored original URL.
 func (m *MemStore) GetByOriginal(_ context.Context, original string) (string, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -115,6 +123,7 @@ func (m *MemStore) GetByOriginal(_ context.Context, original string) (string, er
 	return "", ErrNotFound
 }
 
+// GetByUser returns non-deleted URLs owned by userID.
 func (m *MemStore) GetByUser(_ context.Context, userID string) ([]UserURL, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -150,6 +159,7 @@ func (m *MemStore) GetByUser(_ context.Context, userID string) ([]UserURL, error
 	return result, nil
 }
 
+// Ping reports that the in-memory store is available.
 func (m *MemStore) Ping(_ context.Context) error {
 	return nil
 }

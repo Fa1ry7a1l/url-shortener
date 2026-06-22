@@ -6,15 +6,24 @@ import (
 	"strings"
 )
 
+// Config contains runtime settings for the shortener service.
 type Config struct {
-	Addr            string
-	BaseURL         string
-	IDLength        int
+	// Addr is the HTTP server listen address.
+	Addr string
+	// BaseURL is the public base URL used to build short links.
+	BaseURL string
+	// IDLength is the length of generated short IDs.
+	IDLength int
+	// FileStoragePath is the path to the JSON file storage backend.
 	FileStoragePath string
-	DatabaseDSN     string
-	AuthSecret      string
-	AuditFile       string
-	AuditURL        string
+	// DatabaseDSN enables the PostgreSQL storage backend when set.
+	DatabaseDSN string
+	// AuthSecret signs authentication cookies.
+	AuthSecret string
+	// AuditFile enables JSON-lines audit logging when set.
+	AuditFile string
+	// AuditURL enables remote HTTP audit publishing when set.
+	AuditURL string
 }
 
 const (
@@ -28,6 +37,7 @@ const (
 	defaultAuditURL        = ""
 )
 
+// Parse reads settings from command-line arguments and environment variables.
 func Parse(args []string) (*Config, error) {
 	cfg := &Config{}
 

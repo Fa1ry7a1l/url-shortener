@@ -10,31 +10,45 @@ import (
 	"github.com/Fa1ry7a1l/url-shortener/internal/repository"
 )
 
+// BatchRequestItem describes one URL in a batch shortening request.
 type BatchRequestItem struct {
+	// CorrelationID links a request item to its response item.
 	CorrelationID string
-	OriginalURL   string
-}
-
-type BatchResponseItem struct {
-	CorrelationID string
-	ShortURL      string
-}
-
-type UserURL struct {
-	ShortURL    string
+	// OriginalURL is the URL to shorten.
 	OriginalURL string
 }
 
-var ErrUnauthorized = errors.New("missing user id")
-
-type ConflictError struct {
+// BatchResponseItem describes one URL in a batch shortening response.
+type BatchResponseItem struct {
+	// CorrelationID repeats the request item identifier.
+	CorrelationID string
+	// ShortURL is the generated short URL.
 	ShortURL string
 }
 
+// UserURL describes a short URL owned by a user.
+type UserURL struct {
+	// ShortURL is the generated short URL.
+	ShortURL string
+	// OriginalURL is the URL that ShortURL redirects to.
+	OriginalURL string
+}
+
+// ErrUnauthorized is returned when a user-scoped operation has no user ID.
+var ErrUnauthorized = errors.New("missing user id")
+
+// ConflictError reports an existing short URL for a duplicate original URL.
+type ConflictError struct {
+	// ShortURL is the existing short URL for the duplicated original URL.
+	ShortURL string
+}
+
+// Error returns a stable conflict error message.
 func (e *ConflictError) Error() string {
 	return "original url already exists"
 }
 
+// Shortener contains the core URL shortening business logic.
 type Shortener struct {
 	store          repository.Store
 	idgen          IDGenerator
@@ -54,6 +68,7 @@ const (
 	deleteFlushInterval = 100 * time.Millisecond
 )
 
+// NewShortener creates a service that stores URLs and formats short links with baseURL.
 func NewShortener(store repository.Store, idgen IDGenerator, baseURL string) *Shortener {
 	baseURL = strings.TrimRight(baseURL, "/")
 	return &Shortener{
@@ -65,6 +80,7 @@ func NewShortener(store repository.Store, idgen IDGenerator, baseURL string) *Sh
 	}
 }
 
+// Shorten validates and stores an original URL and returns the generated short URL.
 func (s *Shortener) Shorten(ctx context.Context, original string) (string, error) {
 	original = strings.TrimSpace(original)
 	if !isValidURL(original) {
@@ -103,6 +119,7 @@ func (s *Shortener) Shorten(ctx context.Context, original string) (string, error
 	return "", errors.New("failed to generate unique id")
 }
 
+// ShortenBatch validates and stores multiple original URLs in one operation.
 func (s *Shortener) ShortenBatch(ctx context.Context, items []BatchRequestItem) ([]BatchResponseItem, error) {
 	if len(items) == 0 {
 		return nil, errors.New("empty batch")
@@ -162,6 +179,7 @@ func (s *Shortener) ShortenBatch(ctx context.Context, items []BatchRequestItem) 
 	return result, nil
 }
 
+// Resolve returns the original URL for a short ID.
 func (s *Shortener) Resolve(ctx context.Context, id string) (string, error) {
 	if id == "" || strings.Contains(id, "/") {
 		return "", errors.New("invalid id")
@@ -169,6 +187,7 @@ func (s *Shortener) Resolve(ctx context.Context, id string) (string, error) {
 	return s.store.Get(ctx, id)
 }
 
+// UserURLs returns all non-deleted URLs owned by the user from ctx.
 func (s *Shortener) UserURLs(ctx context.Context) ([]UserURL, error) {
 	userID, ok := UserIDFromContext(ctx)
 	if !ok {
@@ -191,6 +210,7 @@ func (s *Shortener) UserURLs(ctx context.Context) ([]UserURL, error) {
 	return result, nil
 }
 
+// DeleteURLs schedules user-owned short IDs for asynchronous deletion.
 func (s *Shortener) DeleteURLs(ctx context.Context, ids []string) error {
 	userID, ok := UserIDFromContext(ctx)
 	if !ok {
@@ -216,6 +236,7 @@ func (s *Shortener) DeleteURLs(ctx context.Context, ids []string) error {
 	return nil
 }
 
+// RunDeleteWorker flushes queued delete requests until ctx is canceled.
 func (s *Shortener) RunDeleteWorker(ctx context.Context) {
 	ticker := time.NewTicker(deleteFlushInterval)
 	defer ticker.Stop()

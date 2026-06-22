@@ -16,11 +16,13 @@ type shortenJSONResponse struct {
 	Result string `json:"result"`
 }
 
+// ShortenJSONHandler handles JSON URL shortening requests on POST /api/shorten.
 type ShortenJSONHandler struct {
 	svc     ShortenerService
 	auditor AuditPublisher
 }
 
+// NewShortenJSONHandler creates a JSON shortening handler.
 func NewShortenJSONHandler(svc ShortenerService, auditors ...AuditPublisher) *ShortenJSONHandler {
 	h := &ShortenJSONHandler{svc: svc}
 	if len(auditors) > 0 {
@@ -29,6 +31,7 @@ func NewShortenJSONHandler(svc ShortenerService, auditors ...AuditPublisher) *Sh
 	return h
 }
 
+// Handle decodes a JSON URL request and writes a JSON response with the short URL.
 func (h *ShortenJSONHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	var req shortenJSONRequest
 

@@ -14,22 +14,29 @@ import (
 )
 
 const (
+	// CookieName is the HTTP cookie name used to store the signed auth token.
 	CookieName = "auth_token"
+	// DefaultTTL is used when a Manager is created without a positive TTL.
 	DefaultTTL = 30 * 24 * time.Hour
 )
 
 type contextKey struct{}
 
+// Claims contains the user identity and expiration time stored in a token.
 type Claims struct {
+	// UserID identifies the authenticated anonymous user.
 	UserID string `json:"user_id,omitempty"`
-	Exp    int64  `json:"exp,omitempty"`
+	// Exp is the optional Unix expiration timestamp.
+	Exp int64 `json:"exp,omitempty"`
 }
 
+// Manager signs, parses, and issues authentication cookies for anonymous users.
 type Manager struct {
 	secret []byte
 	ttl    time.Duration
 }
 
+// NewManager creates a token manager with the provided signing secret and TTL.
 func NewManager(secret string, ttl time.Duration) *Manager {
 	if ttl <= 0 {
 		ttl = DefaultTTL
@@ -40,15 +47,18 @@ func NewManager(secret string, ttl time.Duration) *Manager {
 	}
 }
 
+// UserIDFromContext returns the authenticated user ID stored in ctx.
 func UserIDFromContext(ctx context.Context) (string, bool) {
 	userID, ok := ctx.Value(contextKey{}).(string)
 	return userID, ok && userID != ""
 }
 
+// ContextWithUserID stores a user ID in ctx.
 func ContextWithUserID(ctx context.Context, userID string) context.Context {
 	return context.WithValue(ctx, contextKey{}, userID)
 }
 
+// Middleware ensures every request has an auth cookie and a user ID in context.
 func (m *Manager) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID, ok := m.userIDFromRequest(r)
@@ -89,6 +99,7 @@ func (m *Manager) userIDFromRequest(r *http.Request) (string, bool) {
 	return claims.UserID, true
 }
 
+// NewToken signs a new token for userID.
 func (m *Manager) NewToken(userID string) (string, error) {
 	header := map[string]string{
 		"alg": "HS256",
@@ -112,6 +123,7 @@ func (m *Manager) NewToken(userID string) (string, error) {
 	return signingString + "." + m.sign(signingString), nil
 }
 
+// Parse verifies token integrity, validates expiration, and returns claims.
 func (m *Manager) Parse(token string) (Claims, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {

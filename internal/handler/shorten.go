@@ -9,11 +9,13 @@ import (
 	"github.com/Fa1ry7a1l/url-shortener/internal/service"
 )
 
+// ShortenHandler handles plain-text URL shortening requests on POST /.
 type ShortenHandler struct {
 	svc     ShortenerService
 	auditor AuditPublisher
 }
 
+// NewShortenHandler creates a plain-text shortening handler.
 func NewShortenHandler(svc ShortenerService, auditors ...AuditPublisher) *ShortenHandler {
 	h := &ShortenHandler{svc: svc}
 	if len(auditors) > 0 {
@@ -22,6 +24,7 @@ func NewShortenHandler(svc ShortenerService, auditors ...AuditPublisher) *Shorte
 	return h
 }
 
+// Handle reads an original URL from the request body and writes the short URL.
 func (h *ShortenHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	if ct := r.Header.Get("Content-Type"); ct != "" && !strings.HasPrefix(ct, "text/plain") {
 		http.Error(w, "bad request", http.StatusBadRequest)

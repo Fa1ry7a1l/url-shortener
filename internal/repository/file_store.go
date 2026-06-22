@@ -18,6 +18,7 @@ type fileRecord struct {
 	IsDeleted   bool   `json:"is_deleted"`
 }
 
+// FileStore persists short URLs in a JSON file and keeps an in-memory index.
 type FileStore struct {
 	mu      sync.RWMutex
 	path    string
@@ -26,6 +27,7 @@ type FileStore struct {
 	deleted map[string]struct{}
 }
 
+// NewFileStore creates a file-backed store and loads existing records from path.
 func NewFileStore(path string) (*FileStore, error) {
 	fs := &FileStore{
 		path:    path,
@@ -41,10 +43,12 @@ func NewFileStore(path string) (*FileStore, error) {
 	return fs, nil
 }
 
+// Save stores an ID and original URL without a user binding.
 func (f *FileStore) Save(ctx context.Context, id string, original string) error {
 	return f.SaveForUser(ctx, id, original, "")
 }
 
+// SaveForUser stores an ID and original URL for a user and flushes the file.
 func (f *FileStore) SaveForUser(_ context.Context, id string, original string, userID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -71,6 +75,7 @@ func (f *FileStore) SaveForUser(_ context.Context, id string, original string, u
 	return nil
 }
 
+// SaveBatch stores multiple URLs and flushes the file.
 func (f *FileStore) SaveBatch(_ context.Context, items []BatchItem) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -103,6 +108,7 @@ func (f *FileStore) SaveBatch(_ context.Context, items []BatchItem) error {
 	return nil
 }
 
+// GetByOriginal returns the ID for an already stored original URL.
 func (f *FileStore) GetByOriginal(_ context.Context, original string) (string, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
@@ -116,6 +122,7 @@ func (f *FileStore) GetByOriginal(_ context.Context, original string) (string, e
 	return "", ErrNotFound
 }
 
+// Get returns the original URL for id.
 func (f *FileStore) Get(_ context.Context, id string) (string, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
@@ -130,6 +137,7 @@ func (f *FileStore) Get(_ context.Context, id string) (string, error) {
 	return v, nil
 }
 
+// DeleteBatchByUser marks existing user-owned IDs as deleted and flushes the file.
 func (f *FileStore) DeleteBatchByUser(_ context.Context, userID string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
@@ -160,6 +168,7 @@ func (f *FileStore) DeleteBatchByUser(_ context.Context, userID string, ids []st
 	return f.flush()
 }
 
+// GetByUser returns non-deleted URLs owned by userID.
 func (f *FileStore) GetByUser(_ context.Context, userID string) ([]UserURL, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
@@ -195,6 +204,7 @@ func (f *FileStore) GetByUser(_ context.Context, userID string) ([]UserURL, erro
 	return result, nil
 }
 
+// Ping reports that the file store is available.
 func (f *FileStore) Ping(_ context.Context) error {
 	return nil
 }

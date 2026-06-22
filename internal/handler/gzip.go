@@ -64,6 +64,7 @@ func isGzipEncoded(r *http.Request) bool {
 	return strings.Contains(strings.ToLower(r.Header.Get("Content-Encoding")), "gzip")
 }
 
+// GzipHandle returns middleware that decompresses gzip requests and compresses supported responses.
 func GzipHandle(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Распаковка входящего запроса

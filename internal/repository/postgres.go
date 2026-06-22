@@ -17,10 +17,12 @@ import (
 
 const migrationsPath = "file://migrations"
 
+// PostgresStore persists short URLs in PostgreSQL.
 type PostgresStore struct {
 	db *sql.DB
 }
 
+// NewPostgresStore connects to PostgreSQL, checks connectivity, and applies migrations.
 func NewPostgresStore(dsn string) (*PostgresStore, error) {
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
@@ -66,10 +68,12 @@ func runMigrations(db *sql.DB) error {
 	return nil
 }
 
+// Save stores an ID and original URL without a user binding.
 func (p *PostgresStore) Save(ctx context.Context, id string, original string) error {
 	return p.SaveForUser(ctx, id, original, "")
 }
 
+// SaveForUser stores an ID and original URL for a user.
 func (p *PostgresStore) SaveForUser(ctx context.Context, id string, original string, userID string) error {
 	const query = `
 INSERT INTO short_urls (id, original_url, user_id, is_deleted)
@@ -94,6 +98,7 @@ VALUES ($1, $2, $3, FALSE)
 	return nil
 }
 
+// SaveBatch stores multiple URLs in one transaction.
 func (p *PostgresStore) SaveBatch(ctx context.Context, items []BatchItem) error {
 	if len(items) == 0 {
 		return nil
@@ -145,6 +150,7 @@ VALUES ` + strings.Join(valueParts, ",")
 	return nil
 }
 
+// Get returns the original URL for id.
 func (p *PostgresStore) Get(ctx context.Context, id string) (string, error) {
 	const query = `
 SELECT original_url, is_deleted
@@ -170,6 +176,7 @@ WHERE id = $1
 	return original, nil
 }
 
+// DeleteBatchByUser marks user-owned IDs as deleted.
 func (p *PostgresStore) DeleteBatchByUser(ctx context.Context, userID string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
@@ -186,14 +193,17 @@ WHERE user_id = $1
 	return err
 }
 
+// Ping checks that PostgreSQL is reachable.
 func (p *PostgresStore) Ping(ctx context.Context) error {
 	return p.db.PingContext(ctx)
 }
 
+// Close closes the underlying database connection pool.
 func (p *PostgresStore) Close() error {
 	return p.db.Close()
 }
 
+// GetByOriginal returns the ID for an already stored original URL.
 func (p *PostgresStore) GetByOriginal(ctx context.Context, original string) (string, error) {
 	const query = `
 SELECT id
@@ -213,6 +223,7 @@ WHERE original_url = $1
 	return id, nil
 }
 
+// GetByUser returns non-deleted URLs owned by userID.
 func (p *PostgresStore) GetByUser(ctx context.Context, userID string) ([]UserURL, error) {
 	const query = `
 SELECT id, original_url
