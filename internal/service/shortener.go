@@ -243,7 +243,7 @@ func (s *Shortener) RunDeleteWorker(ctx context.Context) {
 
 	batch := make([]deleteItem, 0, deleteBatchSize)
 
-	flush := func() {
+	flush := func(flushCtx context.Context) {
 		if len(batch) == 0 {
 			return
 		}
@@ -254,24 +254,39 @@ func (s *Shortener) RunDeleteWorker(ctx context.Context) {
 		}
 
 		for userID, ids := range grouped {
-			_ = s.store.DeleteBatchByUser(ctx, userID, ids)
+			_ = s.store.DeleteBatchByUser(flushCtx, userID, ids)
 		}
 
 		batch = batch[:0]
 	}
 
+	drain := func(flushCtx context.Context) {
+		for {
+			select {
+			case item := <-s.deleteQueue:
+				batch = append(batch, item)
+				if len(batch) >= deleteBatchSize {
+					flush(flushCtx)
+				}
+			default:
+				flush(flushCtx)
+				return
+			}
+		}
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
-			flush()
+			drain(context.Background())
 			return
 		case item := <-s.deleteQueue:
 			batch = append(batch, item)
 			if len(batch) >= deleteBatchSize {
-				flush()
+				flush(context.Background())
 			}
 		case <-ticker.C:
-			flush()
+			flush(context.Background())
 		}
 	}
 }

@@ -239,3 +239,39 @@ func TestShortener_DeleteURLs_OwnerOnly(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "https://example.com/2", url)
 }
+
+func TestShortener_RunDeleteWorker_DrainsQueueOnCancel(t *testing.T) {
+	store := repository.NewMemStore()
+	svc := service.NewShortener(store, fixedIDGen{id: "x"}, "http://localhost:8080")
+	userCtx := service.ContextWithUserID(context.Background(), "user-1")
+
+	const count = 16
+	ids := make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		id := "id" + string(rune('a'+i))
+		ids = append(ids, id)
+		require.NoError(t, store.SaveForUser(context.Background(), id, "https://example.com/"+id, "user-1"))
+	}
+
+	require.NoError(t, svc.DeleteURLs(userCtx, ids))
+
+	workerCtx, stopWorker := context.WithCancel(context.Background())
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		svc.RunDeleteWorker(workerCtx)
+	}()
+
+	stopWorker()
+
+	select {
+	case <-workerDone:
+	case <-time.After(time.Second):
+		t.Fatal("delete worker did not stop")
+	}
+
+	for _, id := range ids {
+		_, err := svc.Resolve(context.Background(), id)
+		require.ErrorIs(t, err, repository.ErrDeleted)
+	}
+}
