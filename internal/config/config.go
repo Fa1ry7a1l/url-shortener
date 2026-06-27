@@ -3,6 +3,7 @@ package config
 import (
 	"flag"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -22,6 +23,8 @@ type Config struct {
 	DatabaseDSN string
 	// AuthSecret signs authentication cookies.
 	AuthSecret string
+	// EnableHTTPS starts the main web server with TLS enabled.
+	EnableHTTPS bool
 	// AuditFile enables JSON-lines audit logging when set.
 	AuditFile string
 	// AuditURL enables remote HTTP audit publishing when set.
@@ -36,6 +39,7 @@ const (
 	defaultFileStoragePath = ""
 	defaultDatabaseDSN     = ""
 	defaultAuthSecret      = "url-shortener-secret"
+	defaultEnableHTTPS     = false
 	defaultAuditFile       = ""
 	defaultAuditURL        = ""
 )
@@ -51,7 +55,8 @@ func Parse(args []string) (*Config, error) {
 	fs.IntVar(&cfg.IDLength, "l", defaultIDLength, "Length of generated short ID")
 	fs.StringVar(&cfg.FileStoragePath, "f", defaultFileStoragePath, "Path to JSON storage file")
 	fs.StringVar(&cfg.DatabaseDSN, "d", defaultDatabaseDSN, "PostgreSQL DSN")
-	fs.StringVar(&cfg.AuthSecret, "s", defaultAuthSecret, "JWT cookie signing secret")
+	fs.BoolVar(&cfg.EnableHTTPS, "s", defaultEnableHTTPS, "Enable HTTPS server")
+	fs.StringVar(&cfg.AuthSecret, "auth-secret", defaultAuthSecret, "JWT cookie signing secret")
 	fs.StringVar(&cfg.AuditFile, "audit-file", defaultAuditFile, "Path to audit log file")
 	fs.StringVar(&cfg.AuditURL, "audit-url", defaultAuditURL, "Remote audit receiver URL")
 
@@ -76,6 +81,13 @@ func Parse(args []string) (*Config, error) {
 	}
 	if v := os.Getenv("AUTH_SECRET"); v != "" {
 		cfg.AuthSecret = v
+	}
+	if v := os.Getenv("ENABLE_HTTPS"); v != "" {
+		enableHTTPS, err := strconv.ParseBool(v)
+		if err != nil {
+			enableHTTPS = true
+		}
+		cfg.EnableHTTPS = enableHTTPS
 	}
 	if v := os.Getenv("AUDIT_FILE"); v != "" {
 		cfg.AuditFile = v

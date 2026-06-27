@@ -2,8 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -89,7 +97,7 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	ln, err := net.Listen("tcp", srv.Addr)
+	ln, scheme, err := listen(srv.Addr, cfg.EnableHTTPS)
 	if err != nil {
 		panic(err)
 	}
@@ -106,10 +114,106 @@ func main() {
 		}
 	}()
 
-	fmt.Printf("listening on http://%s\n", srv.Addr)
+	fmt.Printf("listening on %s://%s\n", scheme, srv.Addr)
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		panic(err)
 	}
+}
+
+func listen(addr string, enableHTTPS bool) (net.Listener, string, error) {
+	if !enableHTTPS {
+		ln, err := net.Listen("tcp", addr)
+		return ln, "http", err
+	}
+
+	tlsConfig, err := newTLSConfig(addr)
+	if err != nil {
+		return nil, "", err
+	}
+	ln, err := tls.Listen("tcp", addr, tlsConfig)
+	return ln, "https", err
+}
+
+func newTLSConfig(addr string) (*tls.Config, error) {
+	cert, err := newSelfSignedCertificate(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{cert},
+	}, nil
+}
+
+func newSelfSignedCertificate(addr string) (tls.Certificate, error) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+
+	serialLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialLimit)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+
+	certTemplate := x509.Certificate{
+		SerialNumber:          serialNumber,
+		Subject:               pkix.Name{CommonName: "localhost"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+	for _, host := range certificateHosts(addr) {
+		if ip := net.ParseIP(host); ip != nil {
+			certTemplate.IPAddresses = append(certTemplate.IPAddresses, ip)
+			continue
+		}
+		certTemplate.DNSNames = append(certTemplate.DNSNames, host)
+	}
+
+	certDER, err := x509.CreateCertificate(
+		rand.Reader,
+		&certTemplate,
+		&certTemplate,
+		&privateKey.PublicKey,
+		privateKey,
+	)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+
+	keyDER, err := x509.MarshalECPrivateKey(privateKey)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+
+	return tls.X509KeyPair(certPEM, keyPEM)
+}
+
+func certificateHosts(addr string) []string {
+	hosts := []string{"localhost", "127.0.0.1", "::1"}
+	host, _, err := net.SplitHostPort(addr)
+	if err == nil && host != "" {
+		hosts = append(hosts, host)
+	}
+
+	seen := make(map[string]struct{}, len(hosts))
+	uniqueHosts := hosts[:0]
+	for _, host := range hosts {
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		seen[host] = struct{}{}
+		uniqueHosts = append(uniqueHosts, host)
+	}
+
+	return uniqueHosts
 }
 
 func initStorage(cfg *config.Config) (repository.Store, func(), error) {

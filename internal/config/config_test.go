@@ -12,6 +12,7 @@ func TestParse_Defaults(t *testing.T) {
 	t.Setenv("SERVER_ADDRESS", "")
 	t.Setenv("PPROF_ADDRESS", "")
 	t.Setenv("BASE_URL", "")
+	t.Setenv("ENABLE_HTTPS", "")
 	t.Setenv("AUDIT_FILE", "")
 	t.Setenv("AUDIT_URL", "")
 
@@ -22,6 +23,7 @@ func TestParse_Defaults(t *testing.T) {
 	require.Equal(t, "localhost:6060", cfg.PprofAddr)
 	require.Equal(t, "http://localhost:8080", cfg.BaseURL)
 	require.Equal(t, 8, cfg.IDLength)
+	require.False(t, cfg.EnableHTTPS)
 	require.Equal(t, "", cfg.AuditFile)
 	require.Equal(t, "", cfg.AuditURL)
 }
@@ -30,12 +32,14 @@ func TestParse_Flags(t *testing.T) {
 	t.Setenv("SERVER_ADDRESS", "")
 	t.Setenv("PPROF_ADDRESS", "")
 	t.Setenv("BASE_URL", "")
+	t.Setenv("ENABLE_HTTPS", "")
 
 	cfg, err := config.Parse([]string{
 		"-a", "localhost:9999",
 		"--pprof-address", "localhost:6061",
 		"-b", "http://localhost:1111/",
 		"-l", "12",
+		"-s",
 	})
 	require.NoError(t, err)
 
@@ -43,12 +47,14 @@ func TestParse_Flags(t *testing.T) {
 	require.Equal(t, "localhost:6061", cfg.PprofAddr)
 	require.Equal(t, "http://localhost:1111", cfg.BaseURL)
 	require.Equal(t, 12, cfg.IDLength)
+	require.True(t, cfg.EnableHTTPS)
 }
 
 func TestParse_EnvOverridesFlags(t *testing.T) {
 	t.Setenv("SERVER_ADDRESS", "localhost:7777")
 	t.Setenv("PPROF_ADDRESS", "localhost:6062")
 	t.Setenv("BASE_URL", "http://localhost:7777/")
+	t.Setenv("ENABLE_HTTPS", "true")
 
 	cfg, err := config.Parse([]string{
 		"-a", "localhost:9999",
@@ -62,6 +68,25 @@ func TestParse_EnvOverridesFlags(t *testing.T) {
 	require.Equal(t, "localhost:6062", cfg.PprofAddr)
 	require.Equal(t, "http://localhost:7777", cfg.BaseURL)
 	require.Equal(t, 12, cfg.IDLength)
+	require.True(t, cfg.EnableHTTPS)
+}
+
+func TestParse_EnableHTTPS_EnvFalseOverridesFlag(t *testing.T) {
+	t.Setenv("ENABLE_HTTPS", "false")
+
+	cfg, err := config.Parse([]string{"-s"})
+	require.NoError(t, err)
+
+	require.False(t, cfg.EnableHTTPS)
+}
+
+func TestParse_AuthSecret_LongFlag(t *testing.T) {
+	t.Setenv("AUTH_SECRET", "")
+
+	cfg, err := config.Parse([]string{"--auth-secret", "flag-secret"})
+	require.NoError(t, err)
+
+	require.Equal(t, "flag-secret", cfg.AuthSecret)
 }
 
 func TestParse_InvalidIDLength_FallsBackToDefault(t *testing.T) {
