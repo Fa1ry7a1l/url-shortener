@@ -11,6 +11,7 @@ import (
 
 	"github.com/Fa1ry7a1l/url-shortener/internal/audit"
 	"github.com/Fa1ry7a1l/url-shortener/internal/auth"
+	"github.com/Fa1ry7a1l/url-shortener/internal/buildinfo"
 	"github.com/Fa1ry7a1l/url-shortener/internal/config"
 	"github.com/Fa1ry7a1l/url-shortener/internal/handler"
 	appLogger "github.com/Fa1ry7a1l/url-shortener/internal/logger"
@@ -19,13 +20,17 @@ import (
 )
 
 var (
-	buildVersion string
-	buildDate    string
-	buildCommit  string
+	buildVersion = buildinfo.NotAvailable
+	buildDate    = buildinfo.NotAvailable
+	buildCommit  = buildinfo.NotAvailable
 )
 
 func main() {
-	printBuildInfo()
+	buildinfo.Print(buildinfo.Info{
+		Version: buildVersion,
+		Date:    buildDate,
+		Commit:  buildCommit,
+	})
 
 	cfg, err := config.Parse(os.Args[1:])
 	if err != nil {
@@ -105,23 +110,6 @@ func main() {
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		panic(err)
 	}
-}
-
-func printBuildInfo() {
-	fmt.Printf(
-		"Build version: %s\nBuild date: %s\nBuild commit: %s\n",
-		valueOrNA(buildVersion),
-		valueOrNA(buildDate),
-		valueOrNA(buildCommit),
-	)
-}
-
-func valueOrNA(value string) string {
-	if value == "" {
-		return "N/A"
-	}
-
-	return value
 }
 
 func initStorage(cfg *config.Config) (repository.Store, func(), error) {
