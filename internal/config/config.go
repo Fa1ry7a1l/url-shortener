@@ -1,8 +1,11 @@
 package config
 
 import (
+	"encoding/json"
 	"flag"
+	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -22,6 +25,8 @@ type Config struct {
 	DatabaseDSN string
 	// AuthSecret signs authentication cookies.
 	AuthSecret string
+	// EnableHTTPS starts the main web server with TLS enabled.
+	EnableHTTPS bool
 	// AuditFile enables JSON-lines audit logging when set.
 	AuditFile string
 	// AuditURL enables remote HTTP audit publishing when set.
@@ -36,29 +41,153 @@ const (
 	defaultFileStoragePath = ""
 	defaultDatabaseDSN     = ""
 	defaultAuthSecret      = "url-shortener-secret"
+	defaultEnableHTTPS     = false
 	defaultAuditFile       = ""
 	defaultAuditURL        = ""
 )
 
-// Parse reads settings from command-line arguments and environment variables.
+type fileConfig struct {
+	ServerAddress   *string `json:"server_address"`
+	PprofAddress    *string `json:"pprof_address"`
+	BaseURL         *string `json:"base_url"`
+	IDLength        *int    `json:"id_length"`
+	FileStoragePath *string `json:"file_storage_path"`
+	DatabaseDSN     *string `json:"database_dsn"`
+	AuthSecret      *string `json:"auth_secret"`
+	EnableHTTPS     *bool   `json:"enable_https"`
+	AuditFile       *string `json:"audit_file"`
+	AuditURL        *string `json:"audit_url"`
+}
+
+// Parse reads settings from defaults, JSON config, command-line arguments, and environment variables.
 func Parse(args []string) (*Config, error) {
-	cfg := &Config{}
+	cfg := defaultConfig()
+	flagCfg := defaultConfig()
+	var configPath string
 
 	fs := flag.NewFlagSet("shortener", flag.ContinueOnError)
-	fs.StringVar(&cfg.Addr, "a", defaultAddr, "HTTP server address")
-	fs.StringVar(&cfg.PprofAddr, "pprof-address", defaultPprofAddr, "pprof diagnostics server address")
-	fs.StringVar(&cfg.BaseURL, "b", defaultBaseURL, "Base URL for short links")
-	fs.IntVar(&cfg.IDLength, "l", defaultIDLength, "Length of generated short ID")
-	fs.StringVar(&cfg.FileStoragePath, "f", defaultFileStoragePath, "Path to JSON storage file")
-	fs.StringVar(&cfg.DatabaseDSN, "d", defaultDatabaseDSN, "PostgreSQL DSN")
-	fs.StringVar(&cfg.AuthSecret, "s", defaultAuthSecret, "JWT cookie signing secret")
-	fs.StringVar(&cfg.AuditFile, "audit-file", defaultAuditFile, "Path to audit log file")
-	fs.StringVar(&cfg.AuditURL, "audit-url", defaultAuditURL, "Remote audit receiver URL")
+	fs.StringVar(&flagCfg.Addr, "a", defaultAddr, "HTTP server address")
+	fs.StringVar(&flagCfg.PprofAddr, "pprof-address", defaultPprofAddr, "pprof diagnostics server address")
+	fs.StringVar(&flagCfg.BaseURL, "b", defaultBaseURL, "Base URL for short links")
+	fs.IntVar(&flagCfg.IDLength, "l", defaultIDLength, "Length of generated short ID")
+	fs.StringVar(&flagCfg.FileStoragePath, "f", defaultFileStoragePath, "Path to JSON storage file")
+	fs.StringVar(&flagCfg.DatabaseDSN, "d", defaultDatabaseDSN, "PostgreSQL DSN")
+	fs.BoolVar(&flagCfg.EnableHTTPS, "s", defaultEnableHTTPS, "Enable HTTPS server")
+	fs.StringVar(&flagCfg.AuthSecret, "auth-secret", defaultAuthSecret, "JWT cookie signing secret")
+	fs.StringVar(&flagCfg.AuditFile, "audit-file", defaultAuditFile, "Path to audit log file")
+	fs.StringVar(&flagCfg.AuditURL, "audit-url", defaultAuditURL, "Remote audit receiver URL")
+	fs.StringVar(&configPath, "c", "", "Path to JSON config file")
+	fs.StringVar(&configPath, "config", "", "Path to JSON config file")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
 
+	if v := os.Getenv("CONFIG"); v != "" {
+		configPath = v
+	}
+
+	if configPath != "" {
+		if err := applyFileConfig(cfg, configPath); err != nil {
+			return nil, err
+		}
+	}
+
+	applyFlagConfig(cfg, flagCfg, fs)
+	applyEnvConfig(cfg)
+	normalize(cfg)
+
+	return cfg, nil
+}
+
+func defaultConfig() *Config {
+	return &Config{
+		Addr:            defaultAddr,
+		PprofAddr:       defaultPprofAddr,
+		BaseURL:         defaultBaseURL,
+		IDLength:        defaultIDLength,
+		FileStoragePath: defaultFileStoragePath,
+		DatabaseDSN:     defaultDatabaseDSN,
+		AuthSecret:      defaultAuthSecret,
+		EnableHTTPS:     defaultEnableHTTPS,
+		AuditFile:       defaultAuditFile,
+		AuditURL:        defaultAuditURL,
+	}
+}
+
+func applyFileConfig(cfg *Config, path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read config file: %w", err)
+	}
+
+	var fileCfg fileConfig
+	if err := json.Unmarshal(data, &fileCfg); err != nil {
+		return fmt.Errorf("parse config file: %w", err)
+	}
+
+	if fileCfg.ServerAddress != nil {
+		cfg.Addr = *fileCfg.ServerAddress
+	}
+	if fileCfg.PprofAddress != nil {
+		cfg.PprofAddr = *fileCfg.PprofAddress
+	}
+	if fileCfg.BaseURL != nil {
+		cfg.BaseURL = *fileCfg.BaseURL
+	}
+	if fileCfg.IDLength != nil {
+		cfg.IDLength = *fileCfg.IDLength
+	}
+	if fileCfg.FileStoragePath != nil {
+		cfg.FileStoragePath = *fileCfg.FileStoragePath
+	}
+	if fileCfg.DatabaseDSN != nil {
+		cfg.DatabaseDSN = *fileCfg.DatabaseDSN
+	}
+	if fileCfg.AuthSecret != nil {
+		cfg.AuthSecret = *fileCfg.AuthSecret
+	}
+	if fileCfg.EnableHTTPS != nil {
+		cfg.EnableHTTPS = *fileCfg.EnableHTTPS
+	}
+	if fileCfg.AuditFile != nil {
+		cfg.AuditFile = *fileCfg.AuditFile
+	}
+	if fileCfg.AuditURL != nil {
+		cfg.AuditURL = *fileCfg.AuditURL
+	}
+
+	return nil
+}
+
+func applyFlagConfig(cfg, flagCfg *Config, fs *flag.FlagSet) {
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "a":
+			cfg.Addr = flagCfg.Addr
+		case "pprof-address":
+			cfg.PprofAddr = flagCfg.PprofAddr
+		case "b":
+			cfg.BaseURL = flagCfg.BaseURL
+		case "l":
+			cfg.IDLength = flagCfg.IDLength
+		case "f":
+			cfg.FileStoragePath = flagCfg.FileStoragePath
+		case "d":
+			cfg.DatabaseDSN = flagCfg.DatabaseDSN
+		case "s":
+			cfg.EnableHTTPS = flagCfg.EnableHTTPS
+		case "auth-secret":
+			cfg.AuthSecret = flagCfg.AuthSecret
+		case "audit-file":
+			cfg.AuditFile = flagCfg.AuditFile
+		case "audit-url":
+			cfg.AuditURL = flagCfg.AuditURL
+		}
+	})
+}
+
+func applyEnvConfig(cfg *Config) {
 	if v := os.Getenv("SERVER_ADDRESS"); v != "" {
 		cfg.Addr = v
 	}
@@ -77,28 +206,34 @@ func Parse(args []string) (*Config, error) {
 	if v := os.Getenv("AUTH_SECRET"); v != "" {
 		cfg.AuthSecret = v
 	}
+	if v := os.Getenv("ENABLE_HTTPS"); v != "" {
+		enableHTTPS, err := strconv.ParseBool(v)
+		if err != nil {
+			enableHTTPS = true
+		}
+		cfg.EnableHTTPS = enableHTTPS
+	}
 	if v := os.Getenv("AUDIT_FILE"); v != "" {
 		cfg.AuditFile = v
 	}
 	if v := os.Getenv("AUDIT_URL"); v != "" {
 		cfg.AuditURL = v
 	}
+}
 
+func normalize(cfg *Config) {
 	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
 
 	if cfg.IDLength <= 0 {
 		cfg.IDLength = defaultIDLength
 	}
-	if cfg.FileStoragePath == "" { //останется для сходства с остальными параметрами
+	if cfg.FileStoragePath == "" {
 		cfg.FileStoragePath = defaultFileStoragePath
 	}
-
 	if cfg.AuditFile == "" {
 		cfg.AuditFile = defaultAuditFile
 	}
 	if cfg.AuditURL == "" {
 		cfg.AuditURL = defaultAuditURL
 	}
-
-	return cfg, nil
 }
