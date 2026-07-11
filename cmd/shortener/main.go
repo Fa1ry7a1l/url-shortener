@@ -15,6 +15,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/Fa1ry7a1l/url-shortener/internal/audit"
@@ -32,6 +34,8 @@ var (
 	buildDate    = buildinfo.NotAvailable
 	buildCommit  = buildinfo.NotAvailable
 )
+
+const shutdownTimeout = 10 * time.Second
 
 func main() {
 	buildinfo.Print(buildinfo.Info{
@@ -62,8 +66,15 @@ func main() {
 	idgen := service.NewRandomID(cfg.IDLength)
 	svc := service.NewShortener(store, idgen, cfg.BaseURL)
 	workerCtx, stopWorker := context.WithCancel(context.Background())
-	defer stopWorker()
-	go svc.RunDeleteWorker(workerCtx)
+	workerDone := make(chan struct{})
+	defer func() {
+		stopWorker()
+		<-workerDone
+	}()
+	go func() {
+		defer close(workerDone)
+		svc.RunDeleteWorker(workerCtx)
+	}()
 
 	auditor := initAuditor(cfg)
 	shortenH := handler.NewShortenHandler(svc, auditor)
@@ -107,17 +118,84 @@ func main() {
 		panic(err)
 	}
 
-	go func() {
-		fmt.Printf("pprof listening on http://%s/debug/pprof/\n", pprofSrv.Addr)
-		if serveErr := pprofSrv.Serve(pprofLn); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+	serveErrCh := make(chan error, 2)
+	fmt.Printf("pprof listening on http://%s/debug/pprof/\n", pprofSrv.Addr)
+	serveAsync(serveErrCh, "pprof", pprofSrv, pprofLn)
+	fmt.Printf("listening on %s://%s\n", scheme, srv.Addr)
+	serveAsync(serveErrCh, "main", srv, ln)
+
+	signalCtx, stopSignals := signal.NotifyContext(
+		context.Background(),
+		syscall.SIGTERM,
+		syscall.SIGINT,
+		syscall.SIGQUIT,
+	)
+	defer stopSignals()
+
+	select {
+	case <-signalCtx.Done():
+		stopSignals()
+		log.Info("shutdown signal received")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := shutdownServers(shutdownCtx, srv, pprofSrv); err != nil {
+			_ = srv.Close()
+			_ = pprofSrv.Close()
+			panic(err)
+		}
+		if err := waitServers(serveErrCh, 2); err != nil {
+			panic(err)
+		}
+	case serveErr := <-serveErrCh:
+		_ = srv.Close()
+		_ = pprofSrv.Close()
+		if serveErr != nil {
 			panic(serveErr)
 		}
-	}()
-
-	fmt.Printf("listening on %s://%s\n", scheme, srv.Addr)
-	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		panic(err)
+		if err := waitServers(serveErrCh, 1); err != nil {
+			panic(err)
+		}
 	}
+}
+
+func serveAsync(errCh chan<- error, name string, srv *http.Server, ln net.Listener) {
+	go func() {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- fmt.Errorf("%s server: %w", name, err)
+			return
+		}
+		errCh <- nil
+	}()
+}
+
+func shutdownServers(ctx context.Context, servers ...*http.Server) error {
+	errCh := make(chan error, len(servers))
+	for _, srv := range servers {
+		go func(s *http.Server) {
+			errCh <- s.Shutdown(ctx)
+		}(srv)
+	}
+
+	var errs []error
+	for range servers {
+		if err := <-errCh; err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
+func waitServers(errCh <-chan error, count int) error {
+	var errs []error
+	for i := 0; i < count; i++ {
+		if err := <-errCh; err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return errors.Join(errs...)
 }
 
 func listen(addr string, enableHTTPS bool) (net.Listener, string, error) {
