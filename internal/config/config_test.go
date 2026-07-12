@@ -24,6 +24,7 @@ func clearEnv(t *testing.T) {
 		"ENABLE_HTTPS",
 		"AUDIT_FILE",
 		"AUDIT_URL",
+		"TRUSTED_SUBNET",
 	} {
 		t.Setenv(key, "")
 	}
@@ -56,6 +57,7 @@ func TestParse_Defaults(t *testing.T) {
 	require.False(t, cfg.EnableHTTPS)
 	require.Equal(t, "", cfg.AuditFile)
 	require.Equal(t, "", cfg.AuditURL)
+	require.Equal(t, "", cfg.TrustedSubnet)
 }
 
 func TestParse_Flags(t *testing.T) {
@@ -93,7 +95,8 @@ func TestParse_ConfigFileFlag(t *testing.T) {
 		"auth_secret": "config-secret",
 		"enable_https": true,
 		"audit_file": "/tmp/config-audit.log",
-		"audit_url": "http://localhost:9090/audit"
+		"audit_url": "http://localhost:9090/audit",
+		"trusted_subnet": "192.168.1.0/24"
 	}`)
 
 	cfg, err := config.Parse([]string{"-c", path})
@@ -109,6 +112,7 @@ func TestParse_ConfigFileFlag(t *testing.T) {
 	require.True(t, cfg.EnableHTTPS)
 	require.Equal(t, "/tmp/config-audit.log", cfg.AuditFile)
 	require.Equal(t, "http://localhost:9090/audit", cfg.AuditURL)
+	require.Equal(t, "192.168.1.0/24", cfg.TrustedSubnet)
 }
 
 func TestParse_ConfigFileEnv(t *testing.T) {
@@ -138,10 +142,12 @@ func TestParse_ConfigFileHasLowerPriorityThanFlagsAndEnv(t *testing.T) {
 		"auth_secret": "config-secret",
 		"enable_https": true,
 		"audit_file": "/tmp/config-audit.log",
-		"audit_url": "http://localhost:9090/audit"
+		"audit_url": "http://localhost:9090/audit",
+		"trusted_subnet": "10.0.0.0/8"
 	}`)
 	t.Setenv("SERVER_ADDRESS", "localhost:7777")
 	t.Setenv("BASE_URL", "http://localhost:7777/")
+	t.Setenv("TRUSTED_SUBNET", "172.16.0.0/12")
 
 	cfg, err := config.Parse([]string{
 		"-config", path,
@@ -155,6 +161,7 @@ func TestParse_ConfigFileHasLowerPriorityThanFlagsAndEnv(t *testing.T) {
 		"--auth-secret", "flag-secret",
 		"--audit-file", "/tmp/flag-audit.log",
 		"--audit-url", "http://localhost:1111/audit",
+		"-t", "192.168.0.0/16",
 	})
 	require.NoError(t, err)
 
@@ -168,6 +175,7 @@ func TestParse_ConfigFileHasLowerPriorityThanFlagsAndEnv(t *testing.T) {
 	require.False(t, cfg.EnableHTTPS)
 	require.Equal(t, "/tmp/flag-audit.log", cfg.AuditFile)
 	require.Equal(t, "http://localhost:1111/audit", cfg.AuditURL)
+	require.Equal(t, "172.16.0.0/12", cfg.TrustedSubnet)
 }
 
 func TestParse_InvalidConfigFile_ReturnsError(t *testing.T) {
@@ -176,6 +184,16 @@ func TestParse_InvalidConfigFile_ReturnsError(t *testing.T) {
 
 	cfg, err := config.Parse([]string{"-c", path})
 	require.Error(t, err)
+	require.Nil(t, cfg)
+}
+
+func TestParse_InvalidTrustedSubnet_ReturnsError(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("TRUSTED_SUBNET", "not-a-cidr")
+
+	cfg, err := config.Parse(nil)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "parse trusted subnet")
 	require.Nil(t, cfg)
 }
 
@@ -209,6 +227,16 @@ func TestParse_EnableHTTPS_EnvFalseOverridesFlag(t *testing.T) {
 	require.NoError(t, err)
 
 	require.False(t, cfg.EnableHTTPS)
+}
+
+func TestParse_EnableHTTPS_InvalidEnvReturnsError(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("ENABLE_HTTPS", "sometimes")
+
+	cfg, err := config.Parse(nil)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "parse ENABLE_HTTPS")
+	require.Nil(t, cfg)
 }
 
 func TestParse_AuthSecret_LongFlag(t *testing.T) {

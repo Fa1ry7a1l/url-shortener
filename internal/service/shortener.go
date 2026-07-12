@@ -34,6 +34,14 @@ type UserURL struct {
 	OriginalURL string
 }
 
+// Stats contains service-wide counters.
+type Stats struct {
+	// URLs is the number of stored short URLs.
+	URLs int
+	// Users is the number of users that have stored URLs.
+	Users int
+}
+
 // ErrUnauthorized is returned when a user-scoped operation has no user ID.
 var ErrUnauthorized = errors.New("missing user id")
 
@@ -66,6 +74,7 @@ const (
 	deleteQueueSize     = 4096
 	deleteBatchSize     = 256
 	deleteFlushInterval = 100 * time.Millisecond
+	deleteFlushTimeout  = 5 * time.Second
 )
 
 // NewShortener creates a service that stores URLs and formats short links with baseURL.
@@ -210,6 +219,19 @@ func (s *Shortener) UserURLs(ctx context.Context) ([]UserURL, error) {
 	return result, nil
 }
 
+// Stats returns service-wide counters.
+func (s *Shortener) Stats(ctx context.Context) (Stats, error) {
+	stats, err := s.store.Stats(ctx)
+	if err != nil {
+		return Stats{}, err
+	}
+
+	return Stats{
+		URLs:  stats.URLs,
+		Users: stats.Users,
+	}, nil
+}
+
 // DeleteURLs schedules user-owned short IDs for asynchronous deletion.
 func (s *Shortener) DeleteURLs(ctx context.Context, ids []string) error {
 	userID, ok := UserIDFromContext(ctx)
@@ -259,6 +281,12 @@ func (s *Shortener) RunDeleteWorker(ctx context.Context) {
 
 		batch = batch[:0]
 	}
+	flushWithTimeout := func() {
+		flushCtx, cancel := context.WithTimeout(context.Background(), deleteFlushTimeout)
+		defer cancel()
+
+		flush(flushCtx)
+	}
 
 	drain := func(flushCtx context.Context) {
 		for {
@@ -278,15 +306,17 @@ func (s *Shortener) RunDeleteWorker(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			drain(context.Background())
+			flushCtx, cancel := context.WithTimeout(context.Background(), deleteFlushTimeout)
+			drain(flushCtx)
+			cancel()
 			return
 		case item := <-s.deleteQueue:
 			batch = append(batch, item)
 			if len(batch) >= deleteBatchSize {
-				flush(context.Background())
+				flushWithTimeout()
 			}
 		case <-ticker.C:
-			flush(context.Background())
+			flushWithTimeout()
 		}
 	}
 }

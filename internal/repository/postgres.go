@@ -252,3 +252,21 @@ WHERE user_id = $1
 
 	return result, nil
 }
+
+// Stats returns service-wide counters.
+func (p *PostgresStore) Stats(ctx context.Context) (Stats, error) {
+	const query = `
+SELECT COUNT(*), COUNT(DISTINCT NULLIF(user_id, ''))
+FROM short_urls
+`
+
+	var urls, users int64
+	if err := p.db.QueryRowContext(ctx, query).Scan(&urls, &users); err != nil {
+		return Stats{}, err
+	}
+
+	return Stats{
+		URLs:  int(urls),
+		Users: int(users),
+	}, nil
+}
