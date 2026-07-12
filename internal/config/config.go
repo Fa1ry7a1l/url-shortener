@@ -14,6 +14,8 @@ import (
 type Config struct {
 	// Addr is the HTTP server listen address.
 	Addr string `json:"server_address"`
+	// GRPCAddr is the gRPC server listen address.
+	GRPCAddr string `json:"grpc_server_address"`
 	// PprofAddr is the diagnostics server listen address.
 	PprofAddr string `json:"pprof_address"`
 	// BaseURL is the public base URL used to build short links.
@@ -38,6 +40,7 @@ type Config struct {
 
 const (
 	defaultAddr            = "localhost:8080"
+	defaultGRPCAddr        = "localhost:3200"
 	defaultPprofAddr       = "localhost:6060"
 	defaultBaseURL         = "http://localhost:8080"
 	defaultIDLength        = 8
@@ -58,6 +61,9 @@ func Parse(args []string) (*Config, error) {
 
 	fs := flag.NewFlagSet("shortener", flag.ContinueOnError)
 	fs.StringVar(&flagCfg.Addr, "a", defaultAddr, "HTTP server address")
+	fs.StringVar(&flagCfg.GRPCAddr, "g", defaultGRPCAddr, "gRPC server address")
+	fs.StringVar(&flagCfg.GRPCAddr, "grpc-address", defaultGRPCAddr, "gRPC server address")
+	fs.StringVar(&flagCfg.GRPCAddr, "grpc-server-address", defaultGRPCAddr, "gRPC server address")
 	fs.StringVar(&flagCfg.PprofAddr, "pprof-address", defaultPprofAddr, "pprof diagnostics server address")
 	fs.StringVar(&flagCfg.BaseURL, "b", defaultBaseURL, "Base URL for short links")
 	fs.IntVar(&flagCfg.IDLength, "l", defaultIDLength, "Length of generated short ID")
@@ -100,6 +106,7 @@ func Parse(args []string) (*Config, error) {
 func defaultConfig() *Config {
 	return &Config{
 		Addr:            defaultAddr,
+		GRPCAddr:        defaultGRPCAddr,
 		PprofAddr:       defaultPprofAddr,
 		BaseURL:         defaultBaseURL,
 		IDLength:        defaultIDLength,
@@ -131,6 +138,8 @@ func applyFlagConfig(cfg, flagCfg *Config, fs *flag.FlagSet) {
 		switch f.Name {
 		case "a":
 			cfg.Addr = flagCfg.Addr
+		case "g", "grpc-address", "grpc-server-address":
+			cfg.GRPCAddr = flagCfg.GRPCAddr
 		case "pprof-address":
 			cfg.PprofAddr = flagCfg.PprofAddr
 		case "b":
@@ -158,6 +167,12 @@ func applyFlagConfig(cfg, flagCfg *Config, fs *flag.FlagSet) {
 func applyEnvConfig(cfg *Config) error {
 	if v := os.Getenv("SERVER_ADDRESS"); v != "" {
 		cfg.Addr = v
+	}
+	if v := os.Getenv("GRPC_ADDRESS"); v != "" {
+		cfg.GRPCAddr = v
+	}
+	if v := os.Getenv("GRPC_SERVER_ADDRESS"); v != "" {
+		cfg.GRPCAddr = v
 	}
 	if v := os.Getenv("PPROF_ADDRESS"); v != "" {
 		cfg.PprofAddr = v
