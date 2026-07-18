@@ -141,6 +141,17 @@ func TestParse_ConfigFileEnv(t *testing.T) {
 	require.Equal(t, "http://localhost:9091", cfg.BaseURL)
 }
 
+func TestParse_ConfigFileDistinguishesMissingAndEmptyFields(t *testing.T) {
+	clearEnv(t)
+	path := writeConfigFile(t, `{"base_url":""}`)
+
+	cfg, err := config.Parse([]string{"-c", path})
+	require.NoError(t, err)
+
+	require.Equal(t, "localhost:8080", cfg.Addr)
+	require.Empty(t, cfg.BaseURL)
+}
+
 func TestParse_ConfigFileHasLowerPriorityThanFlagsAndEnv(t *testing.T) {
 	clearEnv(t)
 	path := writeConfigFile(t, `{

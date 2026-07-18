@@ -38,6 +38,21 @@ type Config struct {
 	TrustedSubnet string `json:"trusted_subnet"`
 }
 
+type fileConfig struct {
+	Addr            *string `json:"server_address"`
+	GRPCAddr        *string `json:"grpc_server_address"`
+	PprofAddr       *string `json:"pprof_address"`
+	BaseURL         *string `json:"base_url"`
+	IDLength        *int    `json:"id_length"`
+	FileStoragePath *string `json:"file_storage_path"`
+	DatabaseDSN     *string `json:"database_dsn"`
+	AuthSecret      *string `json:"auth_secret"`
+	EnableHTTPS     *bool   `json:"enable_https"`
+	AuditFile       *string `json:"audit_file"`
+	AuditURL        *string `json:"audit_url"`
+	TrustedSubnet   *string `json:"trusted_subnet"`
+}
+
 const (
 	defaultAddr            = "localhost:8080"
 	defaultGRPCAddr        = "localhost:3200"
@@ -126,8 +141,46 @@ func applyFileConfig(cfg *Config, path string) error {
 		return fmt.Errorf("read config file: %w", err)
 	}
 
-	if err := json.Unmarshal(data, cfg); err != nil {
+	var fileCfg fileConfig
+	if err := json.Unmarshal(data, &fileCfg); err != nil {
 		return fmt.Errorf("parse config file: %w", err)
+	}
+
+	if fileCfg.Addr != nil {
+		cfg.Addr = *fileCfg.Addr
+	}
+	if fileCfg.GRPCAddr != nil {
+		cfg.GRPCAddr = *fileCfg.GRPCAddr
+	}
+	if fileCfg.PprofAddr != nil {
+		cfg.PprofAddr = *fileCfg.PprofAddr
+	}
+	if fileCfg.BaseURL != nil {
+		cfg.BaseURL = *fileCfg.BaseURL
+	}
+	if fileCfg.IDLength != nil {
+		cfg.IDLength = *fileCfg.IDLength
+	}
+	if fileCfg.FileStoragePath != nil {
+		cfg.FileStoragePath = *fileCfg.FileStoragePath
+	}
+	if fileCfg.DatabaseDSN != nil {
+		cfg.DatabaseDSN = *fileCfg.DatabaseDSN
+	}
+	if fileCfg.AuthSecret != nil {
+		cfg.AuthSecret = *fileCfg.AuthSecret
+	}
+	if fileCfg.EnableHTTPS != nil {
+		cfg.EnableHTTPS = *fileCfg.EnableHTTPS
+	}
+	if fileCfg.AuditFile != nil {
+		cfg.AuditFile = *fileCfg.AuditFile
+	}
+	if fileCfg.AuditURL != nil {
+		cfg.AuditURL = *fileCfg.AuditURL
+	}
+	if fileCfg.TrustedSubnet != nil {
+		cfg.TrustedSubnet = *fileCfg.TrustedSubnet
 	}
 
 	return nil

@@ -39,12 +39,11 @@ type Server struct {
 }
 
 // NewServer creates a gRPC shortener server.
-func NewServer(svc ShortenerService, auditors ...AuditPublisher) *Server {
-	s := &Server{svc: svc}
-	if len(auditors) > 0 {
-		s.auditor = auditors[0]
+func NewServer(svc ShortenerService, auditor AuditPublisher) *Server {
+	return &Server{
+		svc:     svc,
+		auditor: auditor,
 	}
-	return s
 }
 
 // ShortenURL handles POST /api/shorten equivalent requests over gRPC.
@@ -53,7 +52,7 @@ func (s *Server) ShortenURL(ctx context.Context, req *shortenerpb.URLShortenRequ
 		return nil, status.Error(codes.InvalidArgument, "missing request")
 	}
 
-	shortURL, err := s.svc.Shorten(serviceContext(ctx), req.GetUrl())
+	shortURL, err := s.svc.Shorten(ctx, req.GetUrl())
 	if err != nil {
 		var conflictErr *service.ConflictError
 		if errors.As(err, &conflictErr) {
@@ -89,7 +88,7 @@ func (s *Server) ExpandURL(ctx context.Context, req *shortenerpb.URLExpandReques
 
 // ListUserURLs handles GET /api/user/urls equivalent requests over gRPC.
 func (s *Server) ListUserURLs(ctx context.Context, _ *emptypb.Empty) (*shortenerpb.UserURLsResponse, error) {
-	items, err := s.svc.UserURLs(serviceContext(ctx))
+	items, err := s.svc.UserURLs(ctx)
 	if err != nil {
 		if errors.Is(err, service.ErrUnauthorized) {
 			return nil, status.Error(codes.Unauthenticated, "unauthorized")
@@ -107,14 +106,6 @@ func (s *Server) ListUserURLs(ctx context.Context, _ *emptypb.Empty) (*shortener
 		})
 	}
 	return resp, nil
-}
-
-func serviceContext(ctx context.Context) context.Context {
-	userID, ok := auth.UserIDFromContext(ctx)
-	if !ok {
-		return ctx
-	}
-	return service.ContextWithUserID(ctx, userID)
 }
 
 func publishAudit(ctx context.Context, publisher AuditPublisher, action string, originalURL string) {

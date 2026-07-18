@@ -58,9 +58,8 @@ func tokenFromMetadata(ctx context.Context) (string, bool) {
 		return "", false
 	}
 
-	const bearerPrefix = "bearer "
-	if len(token) >= len(bearerPrefix) && strings.EqualFold(token[:len(bearerPrefix)], bearerPrefix) {
-		token = strings.TrimSpace(token[len(bearerPrefix):])
+	if scheme, value, ok := strings.Cut(token, " "); ok && strings.EqualFold(scheme, "bearer") {
+		token = strings.TrimSpace(value)
 	}
 	return token, token != ""
 }

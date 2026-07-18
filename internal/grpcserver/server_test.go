@@ -127,7 +127,7 @@ func newTestClient(t *testing.T, authManager *auth.Manager, svc grpcserver.Short
 
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer(grpc.UnaryInterceptor(grpcserver.AuthUnaryInterceptor(authManager)))
-	shortenerpb.RegisterShortenerServiceServer(server, grpcserver.NewServer(svc))
+	shortenerpb.RegisterShortenerServiceServer(server, grpcserver.NewServer(svc, nil))
 	go func() {
 		_ = server.Serve(listener)
 	}()
