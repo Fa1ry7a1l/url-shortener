@@ -34,6 +34,14 @@ type UserURL struct {
 	Original string
 }
 
+// Stats contains service-wide storage counters.
+type Stats struct {
+	// URLs is the number of stored short URLs.
+	URLs int
+	// Users is the number of users that have stored URLs.
+	Users int
+}
+
 // Store defines persistence operations required by the shortener service.
 type Store interface {
 	// Save stores an ID and original URL without binding it to a user.
@@ -50,6 +58,8 @@ type Store interface {
 	GetByOriginal(ctx context.Context, original string) (string, error)
 	// GetByUser returns non-deleted URLs created by a user.
 	GetByUser(ctx context.Context, userID string) ([]UserURL, error)
+	// Stats returns service-wide storage counters.
+	Stats(ctx context.Context) (Stats, error)
 	// Ping checks whether the storage backend is available.
 	Ping(ctx context.Context) error
 }

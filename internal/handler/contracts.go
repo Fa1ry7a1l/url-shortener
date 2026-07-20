@@ -21,6 +21,12 @@ type ShortenerService interface {
 	DeleteURLs(ctx context.Context, ids []string) error
 }
 
+// StatsService defines service-wide counters required by internal handlers.
+type StatsService interface {
+	// Stats returns service-wide counters.
+	Stats(ctx context.Context) (service.Stats, error)
+}
+
 // AuditPublisher receives audit events produced by HTTP handlers.
 type AuditPublisher interface {
 	// Notify publishes one audit event.

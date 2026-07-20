@@ -55,6 +55,20 @@ func (e errStore) GetByUser(ctx context.Context, userID string) ([]repository.Us
 	return nil, e.err
 }
 
+func (e errStore) Stats(ctx context.Context) (repository.Stats, error) {
+	return repository.Stats{}, e.err
+}
+
+type deleteContextStore struct {
+	errStore
+	ctxCh chan context.Context
+}
+
+func (s *deleteContextStore) DeleteBatchByUser(ctx context.Context, userID string, ids []string) error {
+	s.ctxCh <- ctx
+	return nil
+}
+
 func TestShortener_Shorten_OK(t *testing.T) {
 	store := repository.NewMemStore()
 	gen := fixedIDGen{id: "EwHXdJfB"}
@@ -274,4 +288,50 @@ func TestShortener_RunDeleteWorker_DrainsQueueOnCancel(t *testing.T) {
 		_, err := svc.Resolve(context.Background(), id)
 		require.ErrorIs(t, err, repository.ErrDeleted)
 	}
+}
+
+func TestShortener_RunDeleteWorker_UsesTimeoutWhenDrainingOnCancel(t *testing.T) {
+	store := &deleteContextStore{
+		ctxCh: make(chan context.Context, 1),
+	}
+	svc := service.NewShortener(store, fixedIDGen{id: "x"}, "http://localhost:8080")
+	userCtx := service.ContextWithUserID(context.Background(), "user-1")
+
+	require.NoError(t, svc.DeleteURLs(userCtx, []string{"id"}))
+
+	workerCtx, stopWorker := context.WithCancel(context.Background())
+	stopWorker()
+
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		svc.RunDeleteWorker(workerCtx)
+	}()
+
+	select {
+	case deleteCtx := <-store.ctxCh:
+		_, ok := deleteCtx.Deadline()
+		require.True(t, ok)
+	case <-time.After(time.Second):
+		t.Fatal("delete worker did not flush queued deletes")
+	}
+
+	select {
+	case <-workerDone:
+	case <-time.After(time.Second):
+		t.Fatal("delete worker did not stop")
+	}
+}
+
+func TestShortener_Stats(t *testing.T) {
+	store := repository.NewMemStore()
+	svc := service.NewShortener(store, fixedIDGen{id: "x"}, "http://localhost:8080")
+
+	require.NoError(t, store.Save(context.Background(), "public", "https://public.example"))
+	require.NoError(t, store.SaveForUser(context.Background(), "id1", "https://one.example", "user-1"))
+	require.NoError(t, store.SaveForUser(context.Background(), "id2", "https://two.example", "user-2"))
+
+	stats, err := svc.Stats(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, service.Stats{URLs: 3, Users: 2}, stats)
 }

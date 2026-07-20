@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -12,25 +13,27 @@ import (
 // Config contains runtime settings for the shortener service.
 type Config struct {
 	// Addr is the HTTP server listen address.
-	Addr string
+	Addr string `json:"server_address"`
 	// PprofAddr is the diagnostics server listen address.
-	PprofAddr string
+	PprofAddr string `json:"pprof_address"`
 	// BaseURL is the public base URL used to build short links.
-	BaseURL string
+	BaseURL string `json:"base_url"`
 	// IDLength is the length of generated short IDs.
-	IDLength int
+	IDLength int `json:"id_length"`
 	// FileStoragePath is the path to the JSON file storage backend.
-	FileStoragePath string
+	FileStoragePath string `json:"file_storage_path"`
 	// DatabaseDSN enables the PostgreSQL storage backend when set.
-	DatabaseDSN string
+	DatabaseDSN string `json:"database_dsn"`
 	// AuthSecret signs authentication cookies.
-	AuthSecret string
+	AuthSecret string `json:"auth_secret"`
 	// EnableHTTPS starts the main web server with TLS enabled.
-	EnableHTTPS bool
+	EnableHTTPS bool `json:"enable_https"`
 	// AuditFile enables JSON-lines audit logging when set.
-	AuditFile string
+	AuditFile string `json:"audit_file"`
 	// AuditURL enables remote HTTP audit publishing when set.
-	AuditURL string
+	AuditURL string `json:"audit_url"`
+	// TrustedSubnet allows access to internal endpoints from matching client IPs.
+	TrustedSubnet string `json:"trusted_subnet"`
 }
 
 const (
@@ -44,20 +47,8 @@ const (
 	defaultEnableHTTPS     = false
 	defaultAuditFile       = ""
 	defaultAuditURL        = ""
+	defaultTrustedSubnet   = ""
 )
-
-type fileConfig struct {
-	ServerAddress   *string `json:"server_address"`
-	PprofAddress    *string `json:"pprof_address"`
-	BaseURL         *string `json:"base_url"`
-	IDLength        *int    `json:"id_length"`
-	FileStoragePath *string `json:"file_storage_path"`
-	DatabaseDSN     *string `json:"database_dsn"`
-	AuthSecret      *string `json:"auth_secret"`
-	EnableHTTPS     *bool   `json:"enable_https"`
-	AuditFile       *string `json:"audit_file"`
-	AuditURL        *string `json:"audit_url"`
-}
 
 // Parse reads settings from defaults, JSON config, command-line arguments, and environment variables.
 func Parse(args []string) (*Config, error) {
@@ -76,6 +67,7 @@ func Parse(args []string) (*Config, error) {
 	fs.StringVar(&flagCfg.AuthSecret, "auth-secret", defaultAuthSecret, "JWT cookie signing secret")
 	fs.StringVar(&flagCfg.AuditFile, "audit-file", defaultAuditFile, "Path to audit log file")
 	fs.StringVar(&flagCfg.AuditURL, "audit-url", defaultAuditURL, "Remote audit receiver URL")
+	fs.StringVar(&flagCfg.TrustedSubnet, "t", defaultTrustedSubnet, "Trusted CIDR subnet for internal endpoints")
 	fs.StringVar(&configPath, "c", "", "Path to JSON config file")
 	fs.StringVar(&configPath, "config", "", "Path to JSON config file")
 
@@ -94,8 +86,13 @@ func Parse(args []string) (*Config, error) {
 	}
 
 	applyFlagConfig(cfg, flagCfg, fs)
-	applyEnvConfig(cfg)
+	if err := applyEnvConfig(cfg); err != nil {
+		return nil, err
+	}
 	normalize(cfg)
+	if err := validate(cfg); err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
 }
@@ -112,6 +109,7 @@ func defaultConfig() *Config {
 		EnableHTTPS:     defaultEnableHTTPS,
 		AuditFile:       defaultAuditFile,
 		AuditURL:        defaultAuditURL,
+		TrustedSubnet:   defaultTrustedSubnet,
 	}
 }
 
@@ -121,40 +119,8 @@ func applyFileConfig(cfg *Config, path string) error {
 		return fmt.Errorf("read config file: %w", err)
 	}
 
-	var fileCfg fileConfig
-	if err := json.Unmarshal(data, &fileCfg); err != nil {
+	if err := json.Unmarshal(data, cfg); err != nil {
 		return fmt.Errorf("parse config file: %w", err)
-	}
-
-	if fileCfg.ServerAddress != nil {
-		cfg.Addr = *fileCfg.ServerAddress
-	}
-	if fileCfg.PprofAddress != nil {
-		cfg.PprofAddr = *fileCfg.PprofAddress
-	}
-	if fileCfg.BaseURL != nil {
-		cfg.BaseURL = *fileCfg.BaseURL
-	}
-	if fileCfg.IDLength != nil {
-		cfg.IDLength = *fileCfg.IDLength
-	}
-	if fileCfg.FileStoragePath != nil {
-		cfg.FileStoragePath = *fileCfg.FileStoragePath
-	}
-	if fileCfg.DatabaseDSN != nil {
-		cfg.DatabaseDSN = *fileCfg.DatabaseDSN
-	}
-	if fileCfg.AuthSecret != nil {
-		cfg.AuthSecret = *fileCfg.AuthSecret
-	}
-	if fileCfg.EnableHTTPS != nil {
-		cfg.EnableHTTPS = *fileCfg.EnableHTTPS
-	}
-	if fileCfg.AuditFile != nil {
-		cfg.AuditFile = *fileCfg.AuditFile
-	}
-	if fileCfg.AuditURL != nil {
-		cfg.AuditURL = *fileCfg.AuditURL
 	}
 
 	return nil
@@ -183,11 +149,13 @@ func applyFlagConfig(cfg, flagCfg *Config, fs *flag.FlagSet) {
 			cfg.AuditFile = flagCfg.AuditFile
 		case "audit-url":
 			cfg.AuditURL = flagCfg.AuditURL
+		case "t":
+			cfg.TrustedSubnet = flagCfg.TrustedSubnet
 		}
 	})
 }
 
-func applyEnvConfig(cfg *Config) {
+func applyEnvConfig(cfg *Config) error {
 	if v := os.Getenv("SERVER_ADDRESS"); v != "" {
 		cfg.Addr = v
 	}
@@ -209,7 +177,7 @@ func applyEnvConfig(cfg *Config) {
 	if v := os.Getenv("ENABLE_HTTPS"); v != "" {
 		enableHTTPS, err := strconv.ParseBool(v)
 		if err != nil {
-			enableHTTPS = true
+			return fmt.Errorf("parse ENABLE_HTTPS: %w", err)
 		}
 		cfg.EnableHTTPS = enableHTTPS
 	}
@@ -219,6 +187,11 @@ func applyEnvConfig(cfg *Config) {
 	if v := os.Getenv("AUDIT_URL"); v != "" {
 		cfg.AuditURL = v
 	}
+	if v := os.Getenv("TRUSTED_SUBNET"); v != "" {
+		cfg.TrustedSubnet = v
+	}
+
+	return nil
 }
 
 func normalize(cfg *Config) {
@@ -236,4 +209,19 @@ func normalize(cfg *Config) {
 	if cfg.AuditURL == "" {
 		cfg.AuditURL = defaultAuditURL
 	}
+	if cfg.TrustedSubnet == "" {
+		cfg.TrustedSubnet = defaultTrustedSubnet
+	}
+}
+
+func validate(cfg *Config) error {
+	if cfg.TrustedSubnet == "" {
+		return nil
+	}
+
+	if _, _, err := net.ParseCIDR(cfg.TrustedSubnet); err != nil {
+		return fmt.Errorf("parse trusted subnet: %w", err)
+	}
+
+	return nil
 }

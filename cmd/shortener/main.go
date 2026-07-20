@@ -84,6 +84,7 @@ func main() {
 	userURLsH := handler.NewUserURLsHandler(svc)
 	deleteUserURLsH := handler.NewDeleteUserURLsHandler(svc)
 	pingH := handler.NewPingHandler(store)
+	statsH := handler.NewStatsHandler(svc, cfg.TrustedSubnet)
 	authManager := auth.NewManager(cfg.AuthSecret, auth.DefaultTTL)
 
 	router := handler.NewRouter(
@@ -96,6 +97,7 @@ func main() {
 		pingH.Handle,
 		log,
 		authManager,
+		handler.WithStatsHandler(statsH.Handle),
 	)
 	srv := &http.Server{
 		Addr:              cfg.Addr,
@@ -240,7 +242,7 @@ func newSelfSignedCertificate(addr string) (tls.Certificate, error) {
 		SerialNumber:          serialNumber,
 		Subject:               pkix.Name{CommonName: "localhost"},
 		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		NotAfter:              time.Now().Add(time.Hour * 24 * 365),
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
@@ -282,7 +284,7 @@ func certificateHosts(addr string) []string {
 	}
 
 	seen := make(map[string]struct{}, len(hosts))
-	uniqueHosts := hosts[:0]
+	uniqueHosts := make([]string, 0, len(hosts))
 	for _, host := range hosts {
 		if _, ok := seen[host]; ok {
 			continue

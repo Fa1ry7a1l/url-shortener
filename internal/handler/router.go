@@ -18,8 +18,19 @@ type Router struct {
 	userURLs       http.HandlerFunc
 	deleteUserURLs http.HandlerFunc
 	ping           http.HandlerFunc
+	stats          http.HandlerFunc
 	logger         appLogger.Logger
 	authManager    *auth.Manager
+}
+
+// RouterOption customizes Router construction.
+type RouterOption func(*Router)
+
+// WithStatsHandler registers the internal statistics endpoint.
+func WithStatsHandler(stats http.HandlerFunc) RouterOption {
+	return func(rt *Router) {
+		rt.stats = stats
+	}
 }
 
 // NewRouter creates a Router from endpoint handlers and optional middleware dependencies.
@@ -33,8 +44,9 @@ func NewRouter(
 	ping http.HandlerFunc,
 	logger appLogger.Logger,
 	authManager *auth.Manager,
+	options ...RouterOption,
 ) *Router {
-	return &Router{
+	rt := &Router{
 		shorten:        shorten,
 		shortenJSON:    shortenJSON,
 		shortenBatch:   shortenBatch,
@@ -45,6 +57,11 @@ func NewRouter(
 		logger:         logger,
 		authManager:    authManager,
 	}
+	for _, option := range options {
+		option(rt)
+	}
+
+	return rt
 }
 
 // Handler builds the public HTTP handler tree with API routes, gzip, auth, and logging.
@@ -72,6 +89,9 @@ func (rt *Router) Handler() http.Handler {
 	r.Post("/api/shorten/batch", rt.shortenBatch)
 	r.Get("/api/user/urls", rt.userURLs)
 	r.Delete("/api/user/urls", rt.deleteUserURLs)
+	if rt.stats != nil {
+		r.Get("/api/internal/stats", rt.stats)
+	}
 	r.Get("/ping", rt.ping)
 	r.Get("/{id}", rt.resolve)
 

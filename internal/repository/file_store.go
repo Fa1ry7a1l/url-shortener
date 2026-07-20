@@ -204,6 +204,25 @@ func (f *FileStore) GetByUser(_ context.Context, userID string) ([]UserURL, erro
 	return result, nil
 }
 
+// Stats returns service-wide counters.
+func (f *FileStore) Stats(_ context.Context) (Stats, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	users := make(map[string]struct{})
+	for _, userID := range f.userIDs {
+		if userID == "" {
+			continue
+		}
+		users[userID] = struct{}{}
+	}
+
+	return Stats{
+		URLs:  len(f.data),
+		Users: len(users),
+	}, nil
+}
+
 // Ping reports that the file store is available.
 func (f *FileStore) Ping(_ context.Context) error {
 	return nil

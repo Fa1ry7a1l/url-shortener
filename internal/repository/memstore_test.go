@@ -67,3 +67,17 @@ func TestMemStore_GetByUserSkipsDeletedAndOtherUsers(t *testing.T) {
 		{ID: "id1", Original: "https://one.example"},
 	}, got)
 }
+
+func TestMemStore_Stats(t *testing.T) {
+	st := repository.NewMemStore()
+
+	require.NoError(t, st.Save(context.Background(), "public", "https://public.example"))
+	require.NoError(t, st.SaveForUser(context.Background(), "id1", "https://one.example", "user-1"))
+	require.NoError(t, st.SaveForUser(context.Background(), "id2", "https://two.example", "user-1"))
+	require.NoError(t, st.SaveForUser(context.Background(), "id3", "https://three.example", "user-2"))
+	require.NoError(t, st.DeleteBatchByUser(context.Background(), "user-1", []string{"id2"}))
+
+	stats, err := st.Stats(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, repository.Stats{URLs: 4, Users: 2}, stats)
+}

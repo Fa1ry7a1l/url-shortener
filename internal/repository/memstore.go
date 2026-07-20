@@ -159,6 +159,25 @@ func (m *MemStore) GetByUser(_ context.Context, userID string) ([]UserURL, error
 	return result, nil
 }
 
+// Stats returns service-wide counters.
+func (m *MemStore) Stats(_ context.Context) (Stats, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	users := make(map[string]struct{})
+	for _, userID := range m.userIDs {
+		if userID == "" {
+			continue
+		}
+		users[userID] = struct{}{}
+	}
+
+	return Stats{
+		URLs:  len(m.data),
+		Users: len(users),
+	}, nil
+}
+
 // Ping reports that the in-memory store is available.
 func (m *MemStore) Ping(_ context.Context) error {
 	return nil

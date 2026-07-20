@@ -102,3 +102,26 @@ func TestFileStore_GetByUserSkipsDeletedAndOtherUsers(t *testing.T) {
 		{ID: "id1", Original: "https://one.example"},
 	}, got)
 }
+
+func TestFileStore_Stats(t *testing.T) {
+	path := t.TempDir() + "/db.json"
+
+	store, err := repository.NewFileStore(path)
+	require.NoError(t, err)
+
+	require.NoError(t, store.Save(context.Background(), "public", "https://public.example"))
+	require.NoError(t, store.SaveForUser(context.Background(), "id1", "https://one.example", "user-1"))
+	require.NoError(t, store.SaveForUser(context.Background(), "id2", "https://two.example", "user-1"))
+	require.NoError(t, store.SaveForUser(context.Background(), "id3", "https://three.example", "user-2"))
+	require.NoError(t, store.DeleteBatchByUser(context.Background(), "user-1", []string{"id2"}))
+
+	stats, err := store.Stats(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, repository.Stats{URLs: 4, Users: 2}, stats)
+
+	restarted, err := repository.NewFileStore(path)
+	require.NoError(t, err)
+	stats, err = restarted.Stats(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, repository.Stats{URLs: 4, Users: 2}, stats)
+}
