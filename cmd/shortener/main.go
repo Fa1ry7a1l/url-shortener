@@ -19,14 +19,19 @@ import (
 	"syscall"
 	"time"
 
+	shortenerpb "github.com/Fa1ry7a1l/url-shortener/api"
 	"github.com/Fa1ry7a1l/url-shortener/internal/audit"
 	"github.com/Fa1ry7a1l/url-shortener/internal/auth"
 	"github.com/Fa1ry7a1l/url-shortener/internal/buildinfo"
 	"github.com/Fa1ry7a1l/url-shortener/internal/config"
+	"github.com/Fa1ry7a1l/url-shortener/internal/grpcserver"
 	"github.com/Fa1ry7a1l/url-shortener/internal/handler"
 	appLogger "github.com/Fa1ry7a1l/url-shortener/internal/logger"
 	"github.com/Fa1ry7a1l/url-shortener/internal/repository"
 	"github.com/Fa1ry7a1l/url-shortener/internal/service"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/reflection"
 )
 
 var (
@@ -109,6 +114,10 @@ func main() {
 		Handler:           handler.NewPprofHandler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+	grpcSrv, err := newGRPCServer(cfg, svc, auditor, authManager)
+	if err != nil {
+		panic(err)
+	}
 
 	ln, scheme, err := listen(srv.Addr, cfg.EnableHTTPS)
 	if err != nil {
@@ -119,12 +128,20 @@ func main() {
 		_ = ln.Close()
 		panic(err)
 	}
+	grpcLn, err := net.Listen("tcp", cfg.GRPCAddr)
+	if err != nil {
+		_ = ln.Close()
+		_ = pprofLn.Close()
+		panic(err)
+	}
 
-	serveErrCh := make(chan error, 2)
+	serveErrCh := make(chan error, 3)
 	fmt.Printf("pprof listening on http://%s/debug/pprof/\n", pprofSrv.Addr)
 	serveAsync(serveErrCh, "pprof", pprofSrv, pprofLn)
 	fmt.Printf("listening on %s://%s\n", scheme, srv.Addr)
 	serveAsync(serveErrCh, "main", srv, ln)
+	fmt.Printf("gRPC listening on %s://%s\n", grpcScheme(cfg.EnableHTTPS), cfg.GRPCAddr)
+	serveGRPCAsync(serveErrCh, "grpc", grpcSrv, grpcLn)
 
 	signalCtx, stopSignals := signal.NotifyContext(
 		context.Background(),
@@ -141,21 +158,23 @@ func main() {
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
-		if err := shutdownServers(shutdownCtx, srv, pprofSrv); err != nil {
+		if err := shutdownAll(shutdownCtx, grpcSrv, srv, pprofSrv); err != nil {
 			_ = srv.Close()
 			_ = pprofSrv.Close()
+			grpcSrv.Stop()
 			panic(err)
 		}
-		if err := waitServers(serveErrCh, 2); err != nil {
+		if err := waitServers(serveErrCh, 3); err != nil {
 			panic(err)
 		}
 	case serveErr := <-serveErrCh:
 		_ = srv.Close()
 		_ = pprofSrv.Close()
+		grpcSrv.Stop()
 		if serveErr != nil {
 			panic(serveErr)
 		}
-		if err := waitServers(serveErrCh, 1); err != nil {
+		if err := waitServers(serveErrCh, 2); err != nil {
 			panic(err)
 		}
 	}
@@ -169,6 +188,28 @@ func serveAsync(errCh chan<- error, name string, srv *http.Server, ln net.Listen
 		}
 		errCh <- nil
 	}()
+}
+
+func serveGRPCAsync(errCh chan<- error, name string, srv *grpc.Server, ln net.Listener) {
+	go func() {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			errCh <- fmt.Errorf("%s server: %w", name, err)
+			return
+		}
+		errCh <- nil
+	}()
+}
+
+func shutdownAll(ctx context.Context, grpcSrv *grpc.Server, httpServers ...*http.Server) error {
+	errCh := make(chan error, 2)
+	go func() {
+		errCh <- shutdownServers(ctx, httpServers...)
+	}()
+	go func() {
+		errCh <- shutdownGRPCServer(ctx, grpcSrv)
+	}()
+
+	return errors.Join(<-errCh, <-errCh)
 }
 
 func shutdownServers(ctx context.Context, servers ...*http.Server) error {
@@ -189,6 +230,23 @@ func shutdownServers(ctx context.Context, servers ...*http.Server) error {
 	return errors.Join(errs...)
 }
 
+func shutdownGRPCServer(ctx context.Context, srv *grpc.Server) error {
+	done := make(chan struct{})
+	go func() {
+		srv.GracefulStop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		srv.Stop()
+		<-done
+		return ctx.Err()
+	}
+}
+
 func waitServers(errCh <-chan error, count int) error {
 	var errs []error
 	for i := 0; i < count; i++ {
@@ -198,6 +256,36 @@ func waitServers(errCh <-chan error, count int) error {
 	}
 
 	return errors.Join(errs...)
+}
+
+func newGRPCServer(
+	cfg *config.Config,
+	svc grpcserver.ShortenerService,
+	auditor grpcserver.AuditPublisher,
+	authManager *auth.Manager,
+) (*grpc.Server, error) {
+	options := []grpc.ServerOption{
+		grpc.UnaryInterceptor(grpcserver.AuthUnaryInterceptor(authManager)),
+	}
+	if cfg.EnableHTTPS {
+		tlsConfig, err := newTLSConfig(cfg.GRPCAddr)
+		if err != nil {
+			return nil, err
+		}
+		options = append(options, grpc.Creds(credentials.NewTLS(tlsConfig)))
+	}
+
+	grpcSrv := grpc.NewServer(options...)
+	shortenerpb.RegisterShortenerServiceServer(grpcSrv, grpcserver.NewServer(svc, auditor))
+	reflection.Register(grpcSrv)
+	return grpcSrv, nil
+}
+
+func grpcScheme(enableTLS bool) string {
+	if enableTLS {
+		return "grpcs"
+	}
+	return "grpc"
 }
 
 func listen(addr string, enableHTTPS bool) (net.Listener, string, error) {

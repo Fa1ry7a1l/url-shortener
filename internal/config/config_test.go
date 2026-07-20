@@ -16,6 +16,8 @@ func clearEnv(t *testing.T) {
 	for _, key := range []string{
 		"CONFIG",
 		"SERVER_ADDRESS",
+		"GRPC_ADDRESS",
+		"GRPC_SERVER_ADDRESS",
 		"PPROF_ADDRESS",
 		"BASE_URL",
 		"FILE_STORAGE_PATH",
@@ -41,6 +43,7 @@ func writeConfigFile(t *testing.T, body string) string {
 func TestParse_Defaults(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("SERVER_ADDRESS", "")
+	t.Setenv("GRPC_SERVER_ADDRESS", "")
 	t.Setenv("PPROF_ADDRESS", "")
 	t.Setenv("BASE_URL", "")
 	t.Setenv("ENABLE_HTTPS", "")
@@ -51,6 +54,7 @@ func TestParse_Defaults(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, "localhost:8080", cfg.Addr)
+	require.Equal(t, "localhost:3200", cfg.GRPCAddr)
 	require.Equal(t, "localhost:6060", cfg.PprofAddr)
 	require.Equal(t, "http://localhost:8080", cfg.BaseURL)
 	require.Equal(t, 8, cfg.IDLength)
@@ -63,12 +67,14 @@ func TestParse_Defaults(t *testing.T) {
 func TestParse_Flags(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("SERVER_ADDRESS", "")
+	t.Setenv("GRPC_SERVER_ADDRESS", "")
 	t.Setenv("PPROF_ADDRESS", "")
 	t.Setenv("BASE_URL", "")
 	t.Setenv("ENABLE_HTTPS", "")
 
 	cfg, err := config.Parse([]string{
 		"-a", "localhost:9999",
+		"-g", "localhost:3201",
 		"--pprof-address", "localhost:6061",
 		"-b", "http://localhost:1111/",
 		"-l", "12",
@@ -77,6 +83,7 @@ func TestParse_Flags(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, "localhost:9999", cfg.Addr)
+	require.Equal(t, "localhost:3201", cfg.GRPCAddr)
 	require.Equal(t, "localhost:6061", cfg.PprofAddr)
 	require.Equal(t, "http://localhost:1111", cfg.BaseURL)
 	require.Equal(t, 12, cfg.IDLength)
@@ -87,6 +94,7 @@ func TestParse_ConfigFileFlag(t *testing.T) {
 	clearEnv(t)
 	path := writeConfigFile(t, `{
 		"server_address": "localhost:9090",
+		"grpc_server_address": "localhost:3202",
 		"pprof_address": "localhost:6063",
 		"base_url": "http://localhost:9090/",
 		"id_length": 10,
@@ -103,6 +111,7 @@ func TestParse_ConfigFileFlag(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, "localhost:9090", cfg.Addr)
+	require.Equal(t, "localhost:3202", cfg.GRPCAddr)
 	require.Equal(t, "localhost:6063", cfg.PprofAddr)
 	require.Equal(t, "http://localhost:9090", cfg.BaseURL)
 	require.Equal(t, 10, cfg.IDLength)
@@ -119,6 +128,7 @@ func TestParse_ConfigFileEnv(t *testing.T) {
 	clearEnv(t)
 	path := writeConfigFile(t, `{
 		"server_address": "localhost:9091",
+		"grpc_server_address": "localhost:3203",
 		"base_url": "http://localhost:9091"
 	}`)
 	t.Setenv("CONFIG", path)
@@ -127,13 +137,26 @@ func TestParse_ConfigFileEnv(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, "localhost:9091", cfg.Addr)
+	require.Equal(t, "localhost:3203", cfg.GRPCAddr)
 	require.Equal(t, "http://localhost:9091", cfg.BaseURL)
+}
+
+func TestParse_ConfigFileDistinguishesMissingAndEmptyFields(t *testing.T) {
+	clearEnv(t)
+	path := writeConfigFile(t, `{"base_url":""}`)
+
+	cfg, err := config.Parse([]string{"-c", path})
+	require.NoError(t, err)
+
+	require.Equal(t, "localhost:8080", cfg.Addr)
+	require.Empty(t, cfg.BaseURL)
 }
 
 func TestParse_ConfigFileHasLowerPriorityThanFlagsAndEnv(t *testing.T) {
 	clearEnv(t)
 	path := writeConfigFile(t, `{
 		"server_address": "localhost:9090",
+		"grpc_server_address": "localhost:3204",
 		"pprof_address": "localhost:6063",
 		"base_url": "http://localhost:9090/",
 		"id_length": 10,
@@ -146,12 +169,14 @@ func TestParse_ConfigFileHasLowerPriorityThanFlagsAndEnv(t *testing.T) {
 		"trusted_subnet": "10.0.0.0/8"
 	}`)
 	t.Setenv("SERVER_ADDRESS", "localhost:7777")
+	t.Setenv("GRPC_SERVER_ADDRESS", "localhost:3205")
 	t.Setenv("BASE_URL", "http://localhost:7777/")
 	t.Setenv("TRUSTED_SUBNET", "172.16.0.0/12")
 
 	cfg, err := config.Parse([]string{
 		"-config", path,
 		"-a", "localhost:9999",
+		"--grpc-server-address", "localhost:3206",
 		"--pprof-address", "localhost:6064",
 		"-b", "http://localhost:1111",
 		"-l", "12",
@@ -166,6 +191,7 @@ func TestParse_ConfigFileHasLowerPriorityThanFlagsAndEnv(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, "localhost:7777", cfg.Addr)
+	require.Equal(t, "localhost:3205", cfg.GRPCAddr)
 	require.Equal(t, "localhost:6064", cfg.PprofAddr)
 	require.Equal(t, "http://localhost:7777", cfg.BaseURL)
 	require.Equal(t, 12, cfg.IDLength)
@@ -200,12 +226,14 @@ func TestParse_InvalidTrustedSubnet_ReturnsError(t *testing.T) {
 func TestParse_EnvOverridesFlags(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("SERVER_ADDRESS", "localhost:7777")
+	t.Setenv("GRPC_SERVER_ADDRESS", "localhost:3207")
 	t.Setenv("PPROF_ADDRESS", "localhost:6062")
 	t.Setenv("BASE_URL", "http://localhost:7777/")
 	t.Setenv("ENABLE_HTTPS", "true")
 
 	cfg, err := config.Parse([]string{
 		"-a", "localhost:9999",
+		"-g", "localhost:3208",
 		"--pprof-address", "localhost:6061",
 		"-b", "http://localhost:1111",
 		"-l", "12",
@@ -213,10 +241,22 @@ func TestParse_EnvOverridesFlags(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, "localhost:7777", cfg.Addr)
+	require.Equal(t, "localhost:3207", cfg.GRPCAddr)
 	require.Equal(t, "localhost:6062", cfg.PprofAddr)
 	require.Equal(t, "http://localhost:7777", cfg.BaseURL)
 	require.Equal(t, 12, cfg.IDLength)
 	require.True(t, cfg.EnableHTTPS)
+}
+
+func TestParse_GRPCAddressAliasAndCanonicalEnv(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("GRPC_ADDRESS", "localhost:3209")
+	t.Setenv("GRPC_SERVER_ADDRESS", "localhost:3211")
+
+	cfg, err := config.Parse([]string{"--grpc-address", "localhost:3210"})
+	require.NoError(t, err)
+
+	require.Equal(t, "localhost:3211", cfg.GRPCAddr)
 }
 
 func TestParse_EnableHTTPS_EnvFalseOverridesFlag(t *testing.T) {

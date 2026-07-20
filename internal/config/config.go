@@ -14,6 +14,8 @@ import (
 type Config struct {
 	// Addr is the HTTP server listen address.
 	Addr string `json:"server_address"`
+	// GRPCAddr is the gRPC server listen address.
+	GRPCAddr string `json:"grpc_server_address"`
 	// PprofAddr is the diagnostics server listen address.
 	PprofAddr string `json:"pprof_address"`
 	// BaseURL is the public base URL used to build short links.
@@ -36,8 +38,24 @@ type Config struct {
 	TrustedSubnet string `json:"trusted_subnet"`
 }
 
+type fileConfig struct {
+	Addr            *string `json:"server_address"`
+	GRPCAddr        *string `json:"grpc_server_address"`
+	PprofAddr       *string `json:"pprof_address"`
+	BaseURL         *string `json:"base_url"`
+	IDLength        *int    `json:"id_length"`
+	FileStoragePath *string `json:"file_storage_path"`
+	DatabaseDSN     *string `json:"database_dsn"`
+	AuthSecret      *string `json:"auth_secret"`
+	EnableHTTPS     *bool   `json:"enable_https"`
+	AuditFile       *string `json:"audit_file"`
+	AuditURL        *string `json:"audit_url"`
+	TrustedSubnet   *string `json:"trusted_subnet"`
+}
+
 const (
 	defaultAddr            = "localhost:8080"
+	defaultGRPCAddr        = "localhost:3200"
 	defaultPprofAddr       = "localhost:6060"
 	defaultBaseURL         = "http://localhost:8080"
 	defaultIDLength        = 8
@@ -58,6 +76,9 @@ func Parse(args []string) (*Config, error) {
 
 	fs := flag.NewFlagSet("shortener", flag.ContinueOnError)
 	fs.StringVar(&flagCfg.Addr, "a", defaultAddr, "HTTP server address")
+	fs.StringVar(&flagCfg.GRPCAddr, "g", defaultGRPCAddr, "gRPC server address")
+	fs.StringVar(&flagCfg.GRPCAddr, "grpc-address", defaultGRPCAddr, "gRPC server address")
+	fs.StringVar(&flagCfg.GRPCAddr, "grpc-server-address", defaultGRPCAddr, "gRPC server address")
 	fs.StringVar(&flagCfg.PprofAddr, "pprof-address", defaultPprofAddr, "pprof diagnostics server address")
 	fs.StringVar(&flagCfg.BaseURL, "b", defaultBaseURL, "Base URL for short links")
 	fs.IntVar(&flagCfg.IDLength, "l", defaultIDLength, "Length of generated short ID")
@@ -100,6 +121,7 @@ func Parse(args []string) (*Config, error) {
 func defaultConfig() *Config {
 	return &Config{
 		Addr:            defaultAddr,
+		GRPCAddr:        defaultGRPCAddr,
 		PprofAddr:       defaultPprofAddr,
 		BaseURL:         defaultBaseURL,
 		IDLength:        defaultIDLength,
@@ -119,8 +141,46 @@ func applyFileConfig(cfg *Config, path string) error {
 		return fmt.Errorf("read config file: %w", err)
 	}
 
-	if err := json.Unmarshal(data, cfg); err != nil {
+	var fileCfg fileConfig
+	if err := json.Unmarshal(data, &fileCfg); err != nil {
 		return fmt.Errorf("parse config file: %w", err)
+	}
+
+	if fileCfg.Addr != nil {
+		cfg.Addr = *fileCfg.Addr
+	}
+	if fileCfg.GRPCAddr != nil {
+		cfg.GRPCAddr = *fileCfg.GRPCAddr
+	}
+	if fileCfg.PprofAddr != nil {
+		cfg.PprofAddr = *fileCfg.PprofAddr
+	}
+	if fileCfg.BaseURL != nil {
+		cfg.BaseURL = *fileCfg.BaseURL
+	}
+	if fileCfg.IDLength != nil {
+		cfg.IDLength = *fileCfg.IDLength
+	}
+	if fileCfg.FileStoragePath != nil {
+		cfg.FileStoragePath = *fileCfg.FileStoragePath
+	}
+	if fileCfg.DatabaseDSN != nil {
+		cfg.DatabaseDSN = *fileCfg.DatabaseDSN
+	}
+	if fileCfg.AuthSecret != nil {
+		cfg.AuthSecret = *fileCfg.AuthSecret
+	}
+	if fileCfg.EnableHTTPS != nil {
+		cfg.EnableHTTPS = *fileCfg.EnableHTTPS
+	}
+	if fileCfg.AuditFile != nil {
+		cfg.AuditFile = *fileCfg.AuditFile
+	}
+	if fileCfg.AuditURL != nil {
+		cfg.AuditURL = *fileCfg.AuditURL
+	}
+	if fileCfg.TrustedSubnet != nil {
+		cfg.TrustedSubnet = *fileCfg.TrustedSubnet
 	}
 
 	return nil
@@ -131,6 +191,8 @@ func applyFlagConfig(cfg, flagCfg *Config, fs *flag.FlagSet) {
 		switch f.Name {
 		case "a":
 			cfg.Addr = flagCfg.Addr
+		case "g", "grpc-address", "grpc-server-address":
+			cfg.GRPCAddr = flagCfg.GRPCAddr
 		case "pprof-address":
 			cfg.PprofAddr = flagCfg.PprofAddr
 		case "b":
@@ -158,6 +220,12 @@ func applyFlagConfig(cfg, flagCfg *Config, fs *flag.FlagSet) {
 func applyEnvConfig(cfg *Config) error {
 	if v := os.Getenv("SERVER_ADDRESS"); v != "" {
 		cfg.Addr = v
+	}
+	if v := os.Getenv("GRPC_ADDRESS"); v != "" {
+		cfg.GRPCAddr = v
+	}
+	if v := os.Getenv("GRPC_SERVER_ADDRESS"); v != "" {
+		cfg.GRPCAddr = v
 	}
 	if v := os.Getenv("PPROF_ADDRESS"); v != "" {
 		cfg.PprofAddr = v
