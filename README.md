@@ -1,75 +1,91 @@
-# go-musthave-shortener-tpl
+# URL Shortener
 
-Шаблон репозитория для трека «Сервис сокращения URL».
+A URL shortening service written in Go, with HTTP and gRPC APIs and a choice of PostgreSQL, file-backed or in-memory storage.
 
-## Начало работы
+The service creates short links, redirects visitors to the original URL and lets users list and delete their links. HTTP clients are identified by a signed cookie, without a registration flow.
 
-1. Склонируйте репозиторий в любую подходящую директорию на вашем компьютере.
-2. В корне репозитория выполните команду `go mod init <name>` (где `<name>` — адрес вашего репозитория на GitHub без префикса `https://`) для создания модуля.
+## Features
 
-## Обновление шаблона
+- Plain-text, JSON and batch HTTP endpoints; gRPC methods for shortening, resolving and listing links.
+- PostgreSQL storage with automatic schema migrations, plus file and in-memory backends for local use.
+- User-scoped link lists and asynchronous soft deletion through a bounded queue and batch worker.
+- Gzip middleware, structured request logs and optional audit events to a file or HTTP receiver.
+- Separate pprof listener, benchmarks, unit tests and graceful shutdown of the HTTP and gRPC servers.
 
-Чтобы иметь возможность получать обновления автотестов и других частей шаблона, выполните команду:
+## Quick start
 
-```
-git remote add -m v2 template https://github.com/Yandex-Practicum/go-musthave-shortener-tpl.git
-```
+Install Go 1.24.13 or later. Run all commands from the repository root.
 
-Для обновления кода автотестов выполните команду:
-
-```
-git fetch template && git checkout template/v2 .github
-```
-
-Затем добавьте полученные изменения в свой репозиторий.
-
-## Запуск автотестов
-
-Для успешного запуска автотестов называйте ветки `iter<number>`, где `<number>` — порядковый номер инкремента. Например, в ветке с названием `iter4` запустятся автотесты для инкрементов с первого по четвёртый.
-
-При мёрже ветки с инкрементом в основную ветку `main` будут запускаться все автотесты.
-
-Подробнее про локальный и автоматический запуск читайте в [README автотестов](https://github.com/Yandex-Practicum/go-autotests).
-
-## Структура проекта
-
-Приведённая в этом репозитории структура проекта является рекомендуемой, но не обязательной.
-
-Это лишь пример организации кода, который поможет вам в реализации сервиса.
-
-При необходимости можно вносить изменения в структуру проекта, использовать любые библиотеки и предпочитаемые структурные паттерны организации кода приложения, например:
-- **DDD** (Domain-Driven Design)
-- **Clean Architecture**
-- **Hexagonal Architecture**
-- **Layered Architecture**
-
-## Профилирование
-
-Диагностические pprof-роуты обслуживаются отдельным HTTP-сервером на
-`http://localhost:6060/debug/pprof/` и не публикуются через основной API-порт.
-Адрес можно изменить флагом `--pprof-address` или переменной окружения
-`PPROF_ADDRESS`. В production этот порт следует оставлять доступным только из
-доверенной сети.
-
-Сравнение сохранённых профилей:
-
-```shell
-pprof -top -diff_base=profiles/base.pprof profiles/result.pprof
+```sh
+git clone https://github.com/Fa1ry7a1l/url-shortener.git
+cd url-shortener
+go run ./cmd/shortener
 ```
 
-Результат:
+This starts the HTTP API at `http://localhost:8080`, gRPC at `localhost:3200` and pprof at `http://localhost:6060/debug/pprof/`. The default storage is in memory; links are lost when the process stops.
 
-```text
-File: service.test.exe
-Build ID: C:\Users\andrey\AppData\Local\Temp\go-build1537751159\b001\service.test.exe2026-06-08 18:25:52.9696494 +0300 MSK
-Type: alloc_space
-Time: 2026-06-08 18:22:17 MSK
-Showing nodes accounting for -3518.80MB, 63.90% of 5506.59MB total
-Dropped 31 nodes (cum <= 27.53MB)
-      flat  flat%   sum%        cum   cum%
--2706.62MB 49.15% 49.15% -2706.62MB 49.15%  github.com/Fa1ry7a1l/url-shortener/internal/repository.(*MemStore).GetByUser
- -812.67MB 14.76% 63.91% -3519.30MB 63.91%  github.com/Fa1ry7a1l/url-shortener/internal/service.(*Shortener).UserURLs
-    0.50MB 0.0091% 63.90% -3522.46MB 63.97%  github.com/Fa1ry7a1l/url-shortener/internal/service_test.BenchmarkShortenerUserURLs
-         0     0% 63.90% -3521.46MB 63.95%  testing.(*B).launch
-         0     0% 63.90% -3522.96MB 63.98%  testing.(*B).runN
+In another terminal, create a short link and save the user cookie:
+
+```sh
+curl -i -c cookies.txt \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com/articles/go"}' \
+  http://localhost:8080/api/shorten
 ```
+
+The response is `201 Created` with a JSON body containing `result`, the short URL. Open that URL in a browser to follow the redirect. To list links created with the same cookie:
+
+```sh
+curl -b cookies.txt http://localhost:8080/api/user/urls
+```
+
+See the [HTTP API reference](docs/http-api.md) for batch requests, deletion and response codes, or the [gRPC contract](api/shortener.proto) for RPC methods.
+
+## Run with PostgreSQL
+
+Docker Compose starts the database. The Go service runs separately:
+
+```sh
+docker compose up -d --wait postgres
+go run ./cmd/shortener -d 'postgres://shortener:shortener@localhost:5432/shortener?sslmode=disable'
+```
+
+The service applies SQL migrations on startup. Start it from the repository root so it can find `migrations/`. Database records persist in the Compose volume.
+
+For a local file-backed setup instead:
+
+```sh
+go run ./cmd/shortener -f shortener-db.json
+```
+
+Settings can also come from a JSON file or environment variables. See [configuration](docs/configuration.md) and the [example config](examples/config.json).
+
+## Development
+
+```sh
+go test ./...
+go test -race ./...
+go vet ./...
+go build ./...
+```
+
+The tests use local storage and test servers; a running PostgreSQL instance is not required. [Development notes](docs/development.md) cover the custom analyzer, code generator, benchmarks and saved profiles.
+
+## Project layout
+
+| Path | Purpose |
+| --- | --- |
+| `cmd/shortener/` | Server entry point, dependency wiring and shutdown |
+| `cmd/client/` | Interactive HTTP client for the default local endpoint |
+| `cmd/staticlint/`, `cmd/reset/` | Static analysis and Reset method generation tools |
+| `internal/handler/`, `internal/grpcserver/` | HTTP and gRPC transports |
+| `internal/service/`, `internal/repository/` | URL operations and storage implementations |
+| `internal/auth/`, `internal/audit/`, `internal/config/`, `internal/logger/`, `internal/buildinfo/` | Authentication, audit, settings, logging and build metadata |
+| `api/`, `migrations/`, `pkg/pool/` | Protobuf contract, SQL migrations and a generic object pool |
+| `docs/`, `examples/`, `profiles/` | Documentation, example settings and saved profiling data |
+
+Both transports call the same service layer. Storage is selected at startup behind the `repository.Store` interface.
+
+## Project background
+
+Developed as part of the Yandex Practicum Go course, starting from the [URL shortener template](https://github.com/Yandex-Practicum/go-musthave-shortener-tpl). The repository includes the original course assessment workflows.

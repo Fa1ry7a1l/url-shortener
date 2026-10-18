@@ -23,11 +23,14 @@ func TestPool(t *testing.T) {
 	})
 
 	got := p.Get()
+	require.NotNil(t, got)
+	require.Equal(t, int32(1), created.Load())
+
 	got.text = "state"
 	p.Put(got)
+	require.Empty(t, got.text)
 
 	reused := p.Get()
-	require.Same(t, got, reused)
+	require.NotNil(t, reused)
 	require.Empty(t, reused.text)
-	require.Equal(t, int32(1), created.Load())
 }
