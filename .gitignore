@@ -22,3 +22,6 @@ vendor/
 .idea
 .vscode
 /shortener-db.json
+/bin/
+/.local/
+/cookies.txt

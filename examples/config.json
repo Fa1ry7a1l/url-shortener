@@ -1,0 +1,9 @@
+{
+  "server_address": "localhost:8080",
+  "grpc_server_address": "localhost:3200",
+  "pprof_address": "localhost:6060",
+  "base_url": "http://localhost:8080",
+  "id_length": 8,
+  "file_storage_path": ".local/shortener.json",
+  "enable_https": false
+}
